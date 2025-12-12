@@ -6,8 +6,7 @@ let db: Db | null = null;
 function getToken(): string {
   const token = process.env.ASTRA_DB_TOKEN;
   if (!token) {
-    console.error("[AstraDB] ASTRA_DB_TOKEN is missing. Available env vars:", Object.keys(process.env).filter(k => k.includes('ASTRA') || k.includes('DB')));
-    throw new Error("ASTRA_DB_TOKEN environment variable is required. Please set it in Vercel environment variables.");
+    throw new Error("ASTRA_DB_TOKEN environment variable is required");
   }
   return token;
 }
@@ -15,8 +14,7 @@ function getToken(): string {
 function getEndpoint(): string {
   const endpoint = process.env.ASTRA_DB_ENDPOINT;
   if (!endpoint) {
-    console.error("[AstraDB] ASTRA_DB_ENDPOINT is missing. Available env vars:", Object.keys(process.env).filter(k => k.includes('ASTRA') || k.includes('DB')));
-    throw new Error("ASTRA_DB_ENDPOINT environment variable is required. Please set it in Vercel environment variables.");
+    throw new Error("ASTRA_DB_ENDPOINT environment variable is required");
   }
   return endpoint;
 }
@@ -24,9 +22,7 @@ function getEndpoint(): string {
 export function getAstraClient(): DataAPIClient {
   if (!client) {
     const token = getToken();
-    console.log("[AstraDB] Initializing Astra DB client...");
     client = new DataAPIClient(token);
-    console.log("[AstraDB] Client initialized successfully");
   }
   return client;
 }
@@ -35,9 +31,7 @@ export function getAstraDb(): Db {
   if (!db) {
     const endpoint = getEndpoint();
     const astraClient = getAstraClient();
-    console.log("[AstraDB] Connecting to database:", endpoint.substring(0, 50) + "...");
     db = astraClient.db(endpoint);
-    console.log("[AstraDB] Database connection established");
   }
   return db;
 }

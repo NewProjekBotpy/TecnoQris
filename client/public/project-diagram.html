@@ -1,0 +1,917 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TecnoQris - Project Diagram</title>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <style>
+    :root {
+      --bg-primary: #0a0a0f;
+      --bg-secondary: #12121a;
+      --bg-card: #1a1a24;
+      --text-primary: #ffffff;
+      --text-secondary: #a0a0b0;
+      --accent: #3b82f6;
+      --accent-hover: #2563eb;
+      --border: #2a2a3a;
+      --success: #22c55e;
+      --warning: #f59e0b;
+      --error: #ef4444;
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      line-height: 1.6;
+    }
+
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+
+    header {
+      text-align: center;
+      padding: 40px 20px;
+      background: linear-gradient(135deg, var(--bg-secondary) 0%, var(--bg-primary) 100%);
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 40px;
+    }
+
+    header h1 {
+      font-size: 2.5rem;
+      background: linear-gradient(135deg, var(--accent) 0%, #8b5cf6 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin-bottom: 10px;
+    }
+
+    header p {
+      color: var(--text-secondary);
+      font-size: 1.1rem;
+    }
+
+    nav {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 10px;
+      margin-top: 20px;
+    }
+
+    nav a {
+      padding: 8px 16px;
+      background: var(--bg-card);
+      color: var(--text-primary);
+      text-decoration: none;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      transition: all 0.2s;
+      font-size: 0.9rem;
+    }
+
+    nav a:hover {
+      background: var(--accent);
+      border-color: var(--accent);
+    }
+
+    section {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 30px;
+      margin-bottom: 40px;
+    }
+
+    section h2 {
+      font-size: 1.8rem;
+      margin-bottom: 15px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    section h2 .icon {
+      font-size: 1.5rem;
+    }
+
+    section > p {
+      color: var(--text-secondary);
+      margin-bottom: 25px;
+    }
+
+    .diagram-container {
+      background: var(--bg-secondary);
+      border-radius: 12px;
+      padding: 20px;
+      overflow-x: auto;
+      margin-bottom: 20px;
+    }
+
+    .mermaid {
+      display: flex;
+      justify-content: center;
+    }
+
+    .info-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 20px;
+      font-size: 0.9rem;
+    }
+
+    .info-table th,
+    .info-table td {
+      padding: 12px;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .info-table th {
+      background: var(--bg-secondary);
+      color: var(--accent);
+      font-weight: 600;
+    }
+
+    .info-table tr:hover {
+      background: var(--bg-secondary);
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+
+    .badge-get { background: #22c55e20; color: #22c55e; }
+    .badge-post { background: #3b82f620; color: #3b82f6; }
+    .badge-put { background: #f59e0b20; color: #f59e0b; }
+    .badge-patch { background: #8b5cf620; color: #8b5cf6; }
+    .badge-delete { background: #ef444420; color: #ef4444; }
+    .badge-auth { background: #6366f120; color: #6366f1; }
+    .badge-key { background: #ec489920; color: #ec4899; }
+
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 15px;
+      padding: 15px;
+      background: var(--bg-secondary);
+      border-radius: 8px;
+      margin-bottom: 20px;
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.85rem;
+    }
+
+    .legend-color {
+      width: 16px;
+      height: 16px;
+      border-radius: 4px;
+    }
+
+    .subsection {
+      margin-top: 30px;
+      padding-top: 20px;
+      border-top: 1px solid var(--border);
+    }
+
+    .subsection h3 {
+      font-size: 1.2rem;
+      margin-bottom: 15px;
+      color: var(--accent);
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 20px;
+    }
+
+    .card {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+    }
+
+    .card h4 {
+      font-size: 1rem;
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .card p {
+      color: var(--text-secondary);
+      font-size: 0.9rem;
+    }
+
+    .card ul {
+      list-style: none;
+      margin-top: 10px;
+    }
+
+    .card li {
+      padding: 5px 0;
+      font-size: 0.85rem;
+      color: var(--text-secondary);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .card li::before {
+      content: '→';
+      color: var(--accent);
+    }
+
+    footer {
+      text-align: center;
+      padding: 40px 20px;
+      color: var(--text-secondary);
+      border-top: 1px solid var(--border);
+    }
+
+    @media (max-width: 768px) {
+      header h1 {
+        font-size: 1.8rem;
+      }
+
+      section {
+        padding: 20px;
+      }
+
+      section h2 {
+        font-size: 1.4rem;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>TecnoQris Project Diagram</h1>
+    <p>Dokumentasi visual lengkap arsitektur dan flow sistem TecnoQris Payment Gateway</p>
+    <nav>
+      <a href="#architecture">Arsitektur Sistem</a>
+      <a href="#navigation">Flow Navigasi</a>
+      <a href="#api">API Endpoints</a>
+      <a href="#data-models">Model Data</a>
+      <a href="#payment-flow">Flow Pembayaran</a>
+      <a href="#encryption">Enkripsi & Keamanan</a>
+    </nav>
+  </header>
+
+  <div class="container">
+    <!-- Section 1: System Architecture -->
+    <section id="architecture">
+      <h2><span class="icon">🏗️</span> Arsitektur Sistem</h2>
+      <p>Gambaran lengkap arsitektur TecnoQris mulai dari frontend React hingga integrasi dengan Sakurupiah Payment Gateway.</p>
+      
+      <div class="diagram-container">
+        <pre class="mermaid">
+graph TB
+    subgraph Client["🌐 Frontend (React + Vite)"]
+        UI[React Components]
+        Router[Wouter Router]
+        Query[TanStack Query]
+        API_Client[API Client]
+    end
+
+    subgraph Server["⚙️ Backend (Express.js)"]
+        Routes[Express Routes]
+        Auth[Session Auth]
+        Middleware[API Key Auth]
+        Encryption[Encryption Module]
+        Storage[Storage Layer]
+    end
+
+    subgraph Database["🗄️ Database"]
+        AstraDB[(Astra DB<br/>Cassandra)]
+    end
+
+    subgraph External["🔗 External Services"]
+        Sakurupiah[Sakurupiah API<br/>Payment Gateway]
+    end
+
+    UI --> Router
+    Router --> Query
+    Query --> API_Client
+    API_Client -->|HTTP/REST| Routes
+
+    Routes --> Auth
+    Routes --> Middleware
+    Auth --> Storage
+    Middleware --> Storage
+    Routes --> Encryption
+    Encryption -->|Encrypt/Decrypt| Storage
+    Storage -->|CRUD| AstraDB
+
+    Routes -->|Create Payment| Sakurupiah
+    Sakurupiah -->|Webhook| Routes
+
+    style Client fill:#1e3a5f,stroke:#3b82f6,color:#fff
+    style Server fill:#3d1f5c,stroke:#8b5cf6,color:#fff
+    style Database fill:#1f4d3a,stroke:#22c55e,color:#fff
+    style External fill:#5c3d1f,stroke:#f59e0b,color:#fff
+        </pre>
+      </div>
+
+      <div class="legend">
+        <div class="legend-item">
+          <div class="legend-color" style="background: #3b82f6;"></div>
+          <span>Frontend Layer</span>
+        </div>
+        <div class="legend-item">
+          <div class="legend-color" style="background: #8b5cf6;"></div>
+          <span>Backend Layer</span>
+        </div>
+        <div class="legend-item">
+          <div class="legend-color" style="background: #22c55e;"></div>
+          <span>Database</span>
+        </div>
+        <div class="legend-item">
+          <div class="legend-color" style="background: #f59e0b;"></div>
+          <span>External Service</span>
+        </div>
+      </div>
+
+      <div class="grid-2">
+        <div class="card">
+          <h4>🖥️ Frontend Stack</h4>
+          <ul>
+            <li>React 18 dengan TypeScript</li>
+            <li>Wouter untuk routing</li>
+            <li>TanStack Query untuk state</li>
+            <li>Tailwind CSS + shadcn/ui</li>
+            <li>Vite sebagai build tool</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h4>⚙️ Backend Stack</h4>
+          <ul>
+            <li>Node.js + Express.js</li>
+            <li>TypeScript ESM modules</li>
+            <li>Session-based authentication</li>
+            <li>AES-256-GCM encryption</li>
+            <li>Astra DB (Cassandra)</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- Section 2: User Navigation Flow -->
+    <section id="navigation">
+      <h2><span class="icon">🧭</span> Flow Navigasi User</h2>
+      <p>Alur navigasi pengguna dari landing page hingga fitur-fitur dashboard.</p>
+
+      <div class="diagram-container">
+        <pre class="mermaid">
+flowchart TD
+    Start([User Mengakses Website]) --> Landing[Landing Page /]
+    
+    Landing --> PublicPages{Halaman Publik}
+    Landing --> AuthAction{Login/Register?}
+    
+    PublicPages --> Tentang[/tentang]
+    PublicPages --> Blog[/blog]
+    PublicPages --> Karir[/karir]
+    PublicPages --> Docs[/qris-docs]
+    PublicPages --> APIDocs[/api-docs]
+    PublicPages --> Privasi[/privasi]
+    PublicPages --> Ketentuan[/ketentuan]
+    PublicPages --> Keamanan[/keamanan]
+    
+    Blog --> BlogDetail[/blog/:slug]
+    
+    AuthAction -->|Ya| Auth[/login]
+    Auth -->|Sukses| Dashboard
+    
+    subgraph Dashboard["Dashboard Area (Protected)"]
+        DashboardHome[/dashboard<br/>Overview]
+        QRGen[/qr-generator<br/>Generate QRIS]
+        Trans[/transactions<br/>Riwayat Transaksi]
+        Analytics[/analytics<br/>Statistik]
+        Wallets[/wallets<br/>Kelola Rekening]
+        APIKeys[/api-keys<br/>Kelola API Key]
+        Settings[/settings<br/>Pengaturan]
+    end
+    
+    DashboardHome --> QRGen
+    DashboardHome --> Trans
+    DashboardHome --> Analytics
+    DashboardHome --> Wallets
+    DashboardHome --> APIKeys
+    DashboardHome --> Settings
+    
+    Settings --> SakurupiahConfig[Konfigurasi<br/>Sakurupiah API]
+
+    style Landing fill:#3b82f6,stroke:#2563eb,color:#fff
+    style Auth fill:#8b5cf6,stroke:#7c3aed,color:#fff
+    style Dashboard fill:#22c55e20,stroke:#22c55e
+    style SakurupiahConfig fill:#f59e0b,stroke:#d97706,color:#fff
+        </pre>
+      </div>
+
+      <div class="subsection">
+        <h3>Halaman Publik vs Protected</h3>
+        <div class="grid-2">
+          <div class="card">
+            <h4>🔓 Halaman Publik (Tanpa Login)</h4>
+            <ul>
+              <li>Landing Page (/)</li>
+              <li>Tentang Kami (/tentang)</li>
+              <li>Blog (/blog, /blog/:slug)</li>
+              <li>Karir (/karir)</li>
+              <li>QRIS Docs (/qris-docs)</li>
+              <li>API Docs (/api-docs)</li>
+              <li>Privasi (/privasi)</li>
+              <li>Ketentuan (/ketentuan)</li>
+              <li>Keamanan (/keamanan)</li>
+            </ul>
+          </div>
+          <div class="card">
+            <h4>🔒 Dashboard (Memerlukan Login)</h4>
+            <ul>
+              <li>Dashboard (/dashboard)</li>
+              <li>QR Generator (/qr-generator)</li>
+              <li>Transactions (/transactions)</li>
+              <li>Analytics (/analytics)</li>
+              <li>Wallets (/wallets)</li>
+              <li>API Keys (/api-keys)</li>
+              <li>Settings (/settings)</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Section 3: API Endpoints -->
+    <section id="api">
+      <h2><span class="icon">🔌</span> API Endpoints</h2>
+      <p>Daftar lengkap REST API endpoints yang tersedia di TecnoQris.</p>
+
+      <div class="diagram-container">
+        <pre class="mermaid">
+graph LR
+    subgraph Auth["Authentication"]
+        A1[POST /api/auth/register]
+        A2[POST /api/auth/login]
+        A3[POST /api/auth/logout]
+        A4[GET /api/auth/me]
+    end
+
+    subgraph Payments["Payments API v1"]
+        P1[POST /api/v1/payments]
+        P2[GET /api/v1/payments]
+        P3[GET /api/v1/payments/:id]
+        P4[POST /api/v1/payments/:id/simulate]
+    end
+
+    subgraph Resources["Dashboard Resources"]
+        R1[/api/transactions]
+        R2[/api/qr-codes]
+        R3[/api/wallets]
+        R4[/api/api-keys]
+        R5[/api/analytics/*]
+    end
+
+    subgraph Webhooks["Webhooks"]
+        W1[POST /api/v1/webhooks/sakurupiah]
+    end
+
+    style Auth fill:#22c55e20,stroke:#22c55e
+    style Payments fill:#3b82f620,stroke:#3b82f6
+    style Resources fill:#8b5cf620,stroke:#8b5cf6
+    style Webhooks fill:#f59e0b20,stroke:#f59e0b
+        </pre>
+      </div>
+
+      <div class="subsection">
+        <h3>Detail API Endpoints</h3>
+        <table class="info-table">
+          <thead>
+            <tr>
+              <th>Method</th>
+              <th>Endpoint</th>
+              <th>Auth</th>
+              <th>Deskripsi</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><span class="badge badge-post">POST</span></td>
+              <td>/api/auth/register</td>
+              <td>-</td>
+              <td>Registrasi merchant baru</td>
+            </tr>
+            <tr>
+              <td><span class="badge badge-post">POST</span></td>
+              <td>/api/auth/login</td>
+              <td>-</td>
+              <td>Login merchant</td>
+            </tr>
+            <tr>
+              <td><span class="badge badge-post">POST</span></td>
+              <td>/api/auth/logout</td>
+              <td><span class="badge badge-auth">Session</span></td>
+              <td>Logout</td>
+            </tr>
+            <tr>
+              <td><span class="badge badge-get">GET</span></td>
+              <td>/api/auth/me</td>
+              <td><span class="badge badge-auth">Session</span></td>
+              <td>Get current user</td>
+            </tr>
+            <tr>
+              <td><span class="badge badge-post">POST</span></td>
+              <td>/api/v1/payments</td>
+              <td><span class="badge badge-key">API Key</span></td>
+              <td>Buat pembayaran baru (generate QRIS)</td>
+            </tr>
+            <tr>
+              <td><span class="badge badge-get">GET</span></td>
+              <td>/api/v1/payments</td>
+              <td><span class="badge badge-key">API Key</span></td>
+              <td>Daftar semua pembayaran</td>
+            </tr>
+            <tr>
+              <td><span class="badge badge-get">GET</span></td>
+              <td>/api/v1/payments/:id</td>
+              <td><span class="badge badge-key">API Key</span></td>
+              <td>Detail pembayaran</td>
+            </tr>
+            <tr>
+              <td><span class="badge badge-post">POST</span></td>
+              <td>/api/v1/payments/:id/simulate</td>
+              <td><span class="badge badge-key">API Key</span></td>
+              <td>Simulasi pembayaran (sandbox)</td>
+            </tr>
+            <tr>
+              <td><span class="badge badge-get">GET</span></td>
+              <td>/api/transactions</td>
+              <td><span class="badge badge-auth">Session</span></td>
+              <td>Daftar transaksi</td>
+            </tr>
+            <tr>
+              <td><span class="badge badge-post">POST</span></td>
+              <td>/api/v1/webhooks/sakurupiah</td>
+              <td>Signature</td>
+              <td>Webhook callback dari Sakurupiah</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Section 4: Data Models -->
+    <section id="data-models">
+      <h2><span class="icon">📊</span> Model Data</h2>
+      <p>Struktur data dan relasi antar entitas di database Astra DB.</p>
+
+      <div class="diagram-container">
+        <pre class="mermaid">
+erDiagram
+    USER {
+        string _id PK
+        string username UK
+        string password
+        string name
+        string email
+        string role
+        number balance
+        string avatar
+    }
+
+    TRANSACTION {
+        string _id PK
+        string userId FK
+        string transactionId UK
+        string type
+        number amount
+        string status
+        string customer
+        string method
+        string createdAt
+    }
+
+    PAYMENT {
+        string _id PK
+        string userId FK
+        string externalId UK
+        number amount
+        number feeAmount
+        number netAmount
+        string description
+        string customerName
+        string customerEmail
+        string status
+        string paymentMethod
+        string qrString
+        string providerRef
+        string expiresAt
+        string paidAt
+        string createdAt
+    }
+
+    APIKEY {
+        string _id PK
+        string userId FK
+        string name
+        string key UK
+        string mode
+        number isActive
+        number requestCount
+        string createdAt
+    }
+
+    WALLET {
+        string _id PK
+        string userId FK
+        string name
+        string type
+        string accountNumber
+        string bankName
+        number balance
+    }
+
+    QRCODE {
+        string _id PK
+        string userId FK
+        string name
+        number amount
+        string description
+        string qrData
+        number isActive
+    }
+
+    WEBHOOKLOG {
+        string _id PK
+        string paymentId FK
+        string eventType
+        string rawPayload
+        string status
+        string createdAt
+    }
+
+    PAYMENTCHANNEL {
+        string _id PK
+        string code UK
+        string name
+        string type
+        number feeFlat
+        number feePercentage
+        number minAmount
+        number maxAmount
+        number isActive
+    }
+
+    USER ||--o{ TRANSACTION : has
+    USER ||--o{ PAYMENT : creates
+    USER ||--o{ APIKEY : owns
+    USER ||--o{ WALLET : manages
+    USER ||--o{ QRCODE : generates
+    PAYMENT ||--o{ WEBHOOKLOG : receives
+        </pre>
+      </div>
+
+      <div class="subsection">
+        <h3>Field Descriptions</h3>
+        <div class="grid-2">
+          <div class="card">
+            <h4>👤 User</h4>
+            <p>Data merchant yang terdaftar di platform. Termasuk kredensial Sakurupiah yang terenkripsi untuk integrasi payment gateway per-user.</p>
+          </div>
+          <div class="card">
+            <h4>💳 Payment</h4>
+            <p>Record pembayaran yang dibuat melalui API. Menyimpan referensi ke Sakurupiah, QR string, dan status pembayaran.</p>
+          </div>
+          <div class="card">
+            <h4>🔑 ApiKey</h4>
+            <p>API keys untuk akses Payments API v1. Tersedia mode sandbox dan live dengan tracking request count.</p>
+          </div>
+          <div class="card">
+            <h4>📱 QrCode</h4>
+            <p>QRIS yang digenerate oleh merchant melalui dashboard. Bisa statis (tanpa nominal) atau dinamis (dengan nominal).</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Section 5: Payment Flow -->
+    <section id="payment-flow">
+      <h2><span class="icon">💰</span> Flow Pembayaran</h2>
+      <p>Alur lengkap proses pembayaran dari pembuatan QRIS hingga konfirmasi pembayaran.</p>
+
+      <div class="diagram-container">
+        <pre class="mermaid">
+sequenceDiagram
+    autonumber
+    participant Client as 🖥️ Client App
+    participant API as ⚙️ TecnoQris API
+    participant DB as 🗄️ Astra DB
+    participant Sakurupiah as 🏦 Sakurupiah
+
+    Client->>+API: POST /api/v1/payments<br/>(X-API-Key header)
+    API->>API: Validate API Key
+    API->>DB: Get User
+    DB-->>API: User Data
+    API->>Sakurupiah: Create Transaction<br/>(Platform credentials)
+    
+    Sakurupiah-->>API: QR String + Reference
+    API->>DB: Save Payment Record
+    API-->>-Client: Payment Response<br/>(qr_string, expires_at)
+
+    Note over Client: Customer scans QR<br/>& pays via e-wallet
+
+    Sakurupiah->>+API: POST /api/v1/webhooks/sakurupiah<br/>(Payment notification)
+    API->>API: Verify Signature
+    API->>DB: Update Payment Status
+    API->>DB: Log Webhook
+    API-->>-Sakurupiah: 200 OK
+
+    Client->>+API: GET /api/v1/payments/:id
+    API->>DB: Get Payment
+    DB-->>API: Payment (status: paid)
+    API-->>-Client: Payment Details
+        </pre>
+      </div>
+
+      <div class="subsection">
+        <h3>Penjelasan Step-by-Step</h3>
+        <table class="info-table">
+          <thead>
+            <tr>
+              <th>Step</th>
+              <th>Komponen</th>
+              <th>Aksi</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>1</td>
+              <td>Client → API</td>
+              <td>Client mengirim request pembuatan pembayaran dengan API Key</td>
+            </tr>
+            <tr>
+              <td>2-4</td>
+              <td>API → Database</td>
+              <td>Validasi API Key dan ambil data user beserta credentials</td>
+            </tr>
+            <tr>
+              <td>5-6</td>
+              <td>API</td>
+              <td>Decrypt credentials user jika tersedia, atau gunakan platform credentials</td>
+            </tr>
+            <tr>
+              <td>7</td>
+              <td>API → Sakurupiah</td>
+              <td>Buat transaksi di Sakurupiah untuk generate QRIS</td>
+            </tr>
+            <tr>
+              <td>8-9</td>
+              <td>API → Database</td>
+              <td>Simpan record payment dengan QR string dan reference</td>
+            </tr>
+            <tr>
+              <td>10</td>
+              <td>Customer</td>
+              <td>Customer scan QR dan bayar via e-wallet/mobile banking</td>
+            </tr>
+            <tr>
+              <td>11-14</td>
+              <td>Sakurupiah → API</td>
+              <td>Sakurupiah kirim webhook notification, API update status</td>
+            </tr>
+            <tr>
+              <td>15-17</td>
+              <td>Client → API</td>
+              <td>Client cek status pembayaran (polling atau setelah webhook)</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Section 6: Encryption & Security -->
+    <section id="encryption">
+      <h2><span class="icon">🔐</span> Enkripsi & Keamanan</h2>
+      <p>Implementasi keamanan untuk melindungi kredensial API user.</p>
+
+      <div class="diagram-container">
+        <pre class="mermaid">
+flowchart LR
+    subgraph Save["💾 Menyimpan Credentials"]
+        Input[User Input<br/>API ID & Key] --> Encrypt[AES-256-GCM<br/>Encrypt]
+        Encrypt --> Store[(Database<br/>Encrypted)]
+    end
+
+    subgraph Use["🔓 Menggunakan Credentials"]
+        Store2[(Database<br/>Encrypted)] --> Decrypt[AES-256-GCM<br/>Decrypt]
+        Decrypt --> Service[Sakurupiah<br/>Service]
+    end
+
+    subgraph Display["👁️ Menampilkan Status"]
+        Store3[(Database<br/>Encrypted)] --> Decrypt2[Decrypt]
+        Decrypt2 --> Mask[Mask<br/>XXXXXX...]
+        Mask --> UI[User Interface]
+    end
+
+    style Save fill:#22c55e20,stroke:#22c55e
+    style Use fill:#3b82f620,stroke:#3b82f6
+    style Display fill:#8b5cf620,stroke:#8b5cf6
+        </pre>
+      </div>
+
+      <div class="grid-2">
+        <div class="card">
+          <h4>🔒 Algoritma Enkripsi</h4>
+          <ul>
+            <li>AES-256-GCM (Advanced Encryption Standard)</li>
+            <li>Authenticated encryption dengan auth tag</li>
+            <li>Random IV untuk setiap enkripsi</li>
+            <li>ENCRYPTION_KEY dari environment variable</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h4>⚠️ Penting untuk Production</h4>
+          <ul>
+            <li>Set ENCRYPTION_KEY (32 karakter)</li>
+            <li>Jangan ubah key setelah ada data</li>
+            <li>Backup key dengan aman</li>
+            <li>Key yang hilang = data tidak bisa dibaca</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="subsection">
+        <h3>Format Data Terenkripsi</h3>
+        <div class="card">
+          <p style="font-family: monospace; background: var(--bg-primary); padding: 15px; border-radius: 8px;">
+            {iv_hex}:{auth_tag_hex}:{encrypted_data_hex}
+          </p>
+          <p style="margin-top: 15px;">
+            Contoh: <code style="color: var(--accent);">a1b2c3d4e5f6...:9f8e7d6c5b4a...:encrypted123...</code>
+          </p>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <footer>
+    <p>TecnoQris - QRIS Payment Gateway Platform</p>
+    <p style="font-size: 0.85rem; margin-top: 5px;">Dokumentasi ini di-generate otomatis berdasarkan arsitektur proyek</p>
+  </footer>
+
+  <script>
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: 'dark',
+      themeVariables: {
+        primaryColor: '#3b82f6',
+        primaryTextColor: '#ffffff',
+        primaryBorderColor: '#2563eb',
+        lineColor: '#6366f1',
+        secondaryColor: '#8b5cf6',
+        tertiaryColor: '#1a1a24',
+        background: '#12121a',
+        mainBkg: '#1a1a24',
+        nodeBorder: '#3b82f6',
+        clusterBkg: '#12121a',
+        clusterBorder: '#2a2a3a',
+        titleColor: '#ffffff',
+        edgeLabelBackground: '#12121a',
+        nodeTextColor: '#ffffff'
+      },
+      flowchart: {
+        curve: 'basis',
+        padding: 20
+      },
+      sequence: {
+        actorMargin: 50,
+        boxMargin: 10,
+        boxTextMargin: 5,
+        noteMargin: 10,
+        messageMargin: 35
+      }
+    });
+  </script>
+</body>
+</html>

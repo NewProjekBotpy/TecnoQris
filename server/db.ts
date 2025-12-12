@@ -1,18 +1,16 @@
-import { drizzle, NodePgDatabase } from "drizzle-orm/node-postgres";
+import { drizzle as drizzlePg, NodePgDatabase } from "drizzle-orm/node-postgres";
+import { drizzle as drizzlePostgres } from "drizzle-orm/postgres-js";
 import pg from "pg";
+import postgres from "postgres";
 import * as schema from "../shared/schema";
 
-const { Pool, types, defaults } = pg;
-
-// Fix for Supabase Pooler (PgBouncer) - disable prepared statements
-defaults.parseInputDatesAsUTC = true;
-(defaults as any).prepareForSimpleProtocol = true;
+const { Pool } = pg;
 
 const isProduction = process.env.NODE_ENV === 'production';
 const isVercel = process.env.VERCEL === '1' || process.env.VERCEL_ENV !== undefined;
 
 let poolInstance: pg.Pool | null = null;
-let dbInstance: NodePgDatabase<typeof schema> | null = null;
+let dbInstance: any = null;
 let initializationError: Error | null = null;
 let isInitialized = false;
 
@@ -20,7 +18,7 @@ export interface DatabaseInitResult {
   success: boolean;
   error?: string;
   pool?: pg.Pool;
-  db?: NodePgDatabase<typeof schema>;
+  db?: any;
 }
 
 export function isDatabaseConfigured(): boolean {
@@ -51,60 +49,81 @@ export async function initializeDatabase(): Promise<DatabaseInitResult> {
   try {
     const isPgBouncer = connectionString.includes('pgbouncer=true') || connectionString.includes('pooler.supabase.com');
     
-    const poolConfig: pg.PoolConfig = {
-      connectionString,
-      max: isVercel ? 1 : 10,
-      idleTimeoutMillis: isVercel ? 5000 : 30000,
-      connectionTimeoutMillis: isVercel ? 10000 : 10000,
-      statement_timeout: isVercel ? 25000 : 60000,
-    };
-
-    if (isProduction || connectionString.includes('neon.tech') || connectionString.includes('supabase') || connectionString.includes('pooler')) {
-      poolConfig.ssl = {
-        rejectUnauthorized: false
-      };
-    }
-
-    console.log('[DB] Creating pool with config:', { 
-      max: poolConfig.max, 
-      connectionTimeoutMillis: poolConfig.connectionTimeoutMillis,
+    console.log('[DB] Initializing database...', { 
       isPgBouncer,
       isVercel,
-      hasSSL: !!poolConfig.ssl
+      isProduction
     });
 
-    poolInstance = new Pool(poolConfig);
+    if (isPgBouncer || isVercel) {
+      // Use postgres.js driver with prepare: false for PgBouncer/serverless
+      console.log('[DB] Using postgres.js driver with prepare: false for PgBouncer compatibility');
+      
+      const client = postgres(connectionString, {
+        prepare: false,  // CRITICAL: Disable prepared statements for PgBouncer
+        max: 1,
+        idle_timeout: 20,
+        connect_timeout: 10,
+        ssl: 'require',
+      });
 
-    poolInstance.on('error', (err) => {
-      console.error('[DB] Unexpected pool error:', err);
-    });
+      // Test connection
+      console.log('[DB] Testing database connection...');
+      const result = await client`SELECT NOW() as now`;
+      console.log('[DB] Connection test successful:', result[0]?.now);
 
-    poolInstance.on('connect', () => {
-      console.log('[DB] New client connected to PostgreSQL');
-    });
+      dbInstance = drizzlePostgres(client, { schema });
+      isInitialized = true;
 
-    console.log('[DB] Testing database connection...');
-    const client = await poolInstance.connect();
-    try {
-      const result = await client.query('SELECT NOW() as now');
-      console.log('[DB] Connection test successful:', result.rows[0]?.now);
-    } finally {
-      client.release();
+      console.log('[DB] Database initialized successfully with postgres.js driver');
+      return { success: true, db: dbInstance };
+    } else {
+      // Use node-postgres for local development (supports prepared statements)
+      console.log('[DB] Using node-postgres driver for local development');
+      
+      const poolConfig: pg.PoolConfig = {
+        connectionString,
+        max: 10,
+        idleTimeoutMillis: 30000,
+        connectionTimeoutMillis: 10000,
+        statement_timeout: 60000,
+      };
+
+      if (connectionString.includes('neon.tech') || connectionString.includes('supabase')) {
+        poolConfig.ssl = { rejectUnauthorized: false };
+      }
+
+      poolInstance = new Pool(poolConfig);
+
+      poolInstance.on('error', (err) => {
+        console.error('[DB] Unexpected pool error:', err);
+      });
+
+      // Test connection
+      console.log('[DB] Testing database connection...');
+      const client = await poolInstance.connect();
+      try {
+        const result = await client.query('SELECT NOW() as now');
+        console.log('[DB] Connection test successful:', result.rows[0]?.now);
+      } finally {
+        client.release();
+      }
+
+      dbInstance = drizzlePg(poolInstance, { schema });
+      isInitialized = true;
+
+      console.log('[DB] Database initialized successfully with node-postgres driver');
+      return { success: true, pool: poolInstance, db: dbInstance };
     }
-
-    dbInstance = drizzle(poolInstance, { schema });
-    isInitialized = true;
-
-    console.log('[DB] Database initialized successfully');
-    return { success: true, pool: poolInstance, db: dbInstance };
   } catch (error: any) {
     initializationError = error;
     console.error('[DB] Failed to initialize database:', error?.message);
+    console.error('[DB] Error stack:', error?.stack);
     return { success: false, error: error?.message };
   }
 }
 
-export function getDb(): NodePgDatabase<typeof schema> | null {
+export function getDb(): any {
   return dbInstance;
 }
 
@@ -121,7 +140,7 @@ export const pool: pg.Pool = new Proxy({} as pg.Pool, {
   }
 });
 
-export const db: NodePgDatabase<typeof schema> = new Proxy({} as NodePgDatabase<typeof schema>, {
+export const db: any = new Proxy({} as any, {
   get(target, prop) {
     if (!dbInstance) {
       throw new Error('Database not initialized. Call initializeDatabase() first.');

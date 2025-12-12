@@ -173,7 +173,7 @@ export default function Dashboard() {
                   <div className="relative h-16">
                     {transactions.slice(0, 2).map((trx, index) => (
                       <div 
-                        key={trx.id} 
+                        key={trx._id} 
                         className={`absolute w-full rounded-md p-2 border border-border/20 flex items-center transition-all duration-300 ${
                           index === 0 ? 'bg-[#060C18]' : 'bg-secondary/30'
                         }`}
@@ -183,7 +183,7 @@ export default function Dashboard() {
                           opacity: index === 0 ? 1 : 0.6,
                           transform: `scale(${1 - index * 0.02})`
                         }}
-                        data-testid={`preview-transaction-${trx.id}`}
+                        data-testid={`preview-transaction-${trx._id}`}
                       >
                         <div className={`
                           h-6 w-6 rounded-full flex items-center justify-center border shrink-0
@@ -219,12 +219,12 @@ export default function Dashboard() {
                         .filter(trx => transactionFilter === 'all' || trx.type === transactionFilter)
                         .map((trx, index) => (
                         <motion.div 
-                          key={trx.id}
+                          key={trx._id}
                           initial={{ opacity: 0, y: -10 }}
                           animate={{ opacity: 1, y: 0 }}
                           transition={{ delay: index * 0.05 }}
                           className="bg-secondary/30 rounded-md p-2 border border-border/20 flex items-center"
-                          data-testid={`expanded-transaction-${trx.id}`}
+                          data-testid={`expanded-transaction-${trx._id}`}
                         >
                           <div className={`
                             h-6 w-6 rounded-full flex items-center justify-center border shrink-0
@@ -237,7 +237,7 @@ export default function Dashboard() {
                             <p className="text-[9px] text-muted-foreground truncate">{trx.method}</p>
                           </div>
                           <div className="ml-auto flex items-center gap-2">
-                            <span className="text-[9px] text-muted-foreground" data-testid={`transaction-time-${trx.id}`}>
+                            <span className="text-[9px] text-muted-foreground" data-testid={`transaction-time-${trx._id}`}>
                               {new Date(trx.createdAt).toLocaleTimeString('id-ID', { 
                                 hour: '2-digit', 
                                 minute: '2-digit',

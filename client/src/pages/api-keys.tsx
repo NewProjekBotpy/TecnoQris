@@ -126,7 +126,7 @@ function ApiKeyCard({
                 <Switch 
                   id={`status-switch-${mode}`}
                   checked={apiKey.isActive === 1} 
-                  onCheckedChange={() => onToggleStatus(apiKey.id, apiKey.isActive === 1 ? 0 : 1)}
+                  onCheckedChange={() => onToggleStatus(apiKey._id, apiKey.isActive === 1 ? 0 : 1)}
                   data-testid={`switch-status-${mode}`}
                 />
               </div>

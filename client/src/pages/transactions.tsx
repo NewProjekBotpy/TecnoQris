@@ -92,8 +92,8 @@ export default function Transactions() {
                   <TableBody>
                     {filteredTransactions.length > 0 ? (
                       filteredTransactions.map((trx) => (
-                        <TableRow key={trx.id} className="hover:bg-white/5 border-border/50 group" data-testid={`row-transaction-${trx.id}`}>
-                          <TableCell className="font-mono text-[10px] md:text-xs text-muted-foreground whitespace-nowrap" data-testid={`text-trxid-${trx.id}`}>{trx.transactionId}</TableCell>
+                        <TableRow key={trx._id} className="hover:bg-white/5 border-border/50 group" data-testid={`row-transaction-${trx._id}`}>
+                          <TableCell className="font-mono text-[10px] md:text-xs text-muted-foreground whitespace-nowrap" data-testid={`text-trxid-${trx._id}`}>{trx.transactionId}</TableCell>
                           <TableCell className="text-xs md:text-sm whitespace-nowrap">{format(new Date(trx.createdAt), 'yyyy-MM-dd HH:mm')}</TableCell>
                           <TableCell className="font-medium text-xs md:text-sm whitespace-nowrap">{trx.customer}</TableCell>
                           <TableCell>
@@ -108,7 +108,7 @@ export default function Transactions() {
                             <StatusBadge status={trx.status} />
                           </TableCell>
                           <TableCell className="text-right">
-                            <Button variant="ghost" size="sm" className="h-7 text-xs opacity-100 sm:opacity-0 group-hover:opacity-100 transition-opacity" data-testid={`button-details-${trx.id}`}>
+                            <Button variant="ghost" size="sm" className="h-7 text-xs opacity-100 sm:opacity-0 group-hover:opacity-100 transition-opacity" data-testid={`button-details-${trx._id}`}>
                               Details
                             </Button>
                           </TableCell>

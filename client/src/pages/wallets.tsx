@@ -97,14 +97,14 @@ export default function Wallets() {
             ))
           ) : wallets.length > 0 ? (
             wallets.map((wallet) => (
-              <Card key={wallet.id} className="group hover:border-primary/50 transition-all cursor-pointer" data-testid={`card-wallet-${wallet.id}`}>
+              <Card key={wallet._id} className="group hover:border-primary/50 transition-all cursor-pointer" data-testid={`card-wallet-${wallet._id}`}>
                 <CardContent className="p-4 md:pt-6 flex items-center justify-between">
                   <div className="flex items-center gap-4">
                     <div className={`h-10 w-10 md:h-12 md:w-12 rounded-xl bg-primary flex items-center justify-center text-white font-bold shadow-lg text-xs md:text-sm`}>
                       {wallet.type.substring(0, 3).toUpperCase()}
                     </div>
                     <div>
-                      <p className="font-bold text-sm md:text-base" data-testid={`text-wallet-name-${wallet.id}`}>{wallet.name}</p>
+                      <p className="font-bold text-sm md:text-base" data-testid={`text-wallet-name-${wallet._id}`}>{wallet.name}</p>
                       <p className="text-xs md:text-sm text-muted-foreground">{wallet.accountNumber || 'No account'}</p>
                     </div>
                   </div>

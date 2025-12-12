@@ -8,9 +8,17 @@
     "api/index.js": {
       "maxDuration": 60,
       "memory": 1024
+    },
+    "api/test.js": {
+      "maxDuration": 10,
+      "memory": 128
     }
   },
   "rewrites": [
+    {
+      "source": "/api/test",
+      "destination": "/api/test"
+    },
     {
       "source": "/api/:path*",
       "destination": "/api/index"

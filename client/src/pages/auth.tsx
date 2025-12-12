@@ -66,11 +66,80 @@ export default function AuthPage() {
       
       setLocation("/dashboard");
     } catch (error: any) {
-      const message = error?.message || "Terjadi kesalahan. Silakan coba lagi.";
+      
+      let title = "Error";
+      let description = "Terjadi kesalahan. Silakan coba lagi.";
+      
+      if (error?.name === 'AbortError' || error?.message?.includes('timeout') || error?.message?.includes('504') || error?.message?.includes('Request timeout')) {
+        title = "Koneksi Timeout";
+        description = "Server membutuhkan waktu terlalu lama untuk merespons. Coba lagi dalam beberapa saat.";
+      } else if (error?.message?.includes('503') || error?.message?.includes('Service Unavailable')) {
+        title = "Server Tidak Tersedia";
+        description = "Server sedang sibuk atau tidak tersedia. Coba lagi dalam beberapa saat.";
+      } else if (error?.message?.includes('Failed to fetch') || error?.message?.includes('NetworkError')) {
+        title = "Koneksi Gagal";
+        description = "Tidak dapat terhubung ke server. Periksa koneksi internet Anda.";
+      } else {
+        try {
+          const errorText = error?.message || "";
+          const jsonMatch = errorText.match(/\{[\s\S]*\}/);
+          if (jsonMatch) {
+            const errorData = JSON.parse(jsonMatch[0]);
+            description = errorData.message || description;
+            
+            if (errorData.debug) {
+              console.log("[Auth Debug]", errorData.debug);
+              if (errorData.debug.steps) {
+                console.log("[Auth Steps]", errorData.debug.steps.join('\n'));
+              }
+              if (errorData.debug.totalTime) {
+                console.log("[Auth Time]", errorData.debug.totalTime + "ms");
+              }
+            }
+          } else if (errorText.includes(":")) {
+            const parts = errorText.split(":");
+            if (parts.length > 1) {
+              const statusCode = parts[0].trim();
+              const messageText = parts.slice(1).join(":").trim();
+              
+              try {
+                const parsed = JSON.parse(messageText);
+                description = parsed.message || messageText;
+                
+                if (parsed.debug) {
+                  console.log("[Auth Debug]", parsed.debug);
+                }
+              } catch {
+                description = messageText || description;
+              }
+              
+              if (statusCode === "400") {
+                title = "Data Tidak Valid";
+              } else if (statusCode === "401") {
+                title = "Login Gagal";
+              } else if (statusCode === "500") {
+                title = "Kesalahan Server";
+              } else if (statusCode === "504") {
+                title = "Timeout";
+                description = "Server membutuhkan waktu terlalu lama. Coba lagi.";
+              }
+            }
+          }
+        } catch {
+          description = error?.message || description;
+        }
+      }
+      
       toast({
-        title: "Error",
-        description: message,
+        title,
+        description,
         variant: "destructive",
+      });
+      
+      console.error("[Auth Error]", {
+        isLogin,
+        error: error?.message,
+        stack: error?.stack
       });
     } finally {
       setIsLoading(false);

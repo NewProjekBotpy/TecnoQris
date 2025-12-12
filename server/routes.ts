@@ -228,90 +228,220 @@ export async function registerRoutes(
   });
   
   app.post("/api/auth/register", authRateLimiter, async (req, res) => {
+    const startTime = Date.now();
+    const debugLog: string[] = [];
+    
+    const logStep = (step: string) => {
+      const elapsed = Date.now() - startTime;
+      debugLog.push(`[${elapsed}ms] ${step}`);
+      console.log(`[Register] [${elapsed}ms] ${step}`);
+    };
+    
     try {
-      const userData = insertUserSchema.parse(req.body);
+      logStep("Starting registration");
       
+      // Validate input
+      logStep("Validating input data");
+      const userData = insertUserSchema.parse(req.body);
+      logStep("Input validation passed");
+      
+      // Check existing user
+      logStep("Checking if username exists");
       const existingUser = await storage.getUserByUsername(userData.username);
       if (existingUser) {
-        return res.status(400).json({ message: "Username already exists" });
+        logStep("Username already exists - returning error");
+        return res.status(400).json({ 
+          message: "Username sudah digunakan",
+          debug: { steps: debugLog, totalTime: Date.now() - startTime }
+        });
       }
+      logStep("Username available");
       
-      const hashedPassword = await bcrypt.hash(userData.password, 8);
+      // Hash password (cost 10 is industry standard)
+      logStep("Hashing password");
+      const hashedPassword = await bcrypt.hash(userData.password, 10);
+      logStep("Password hashed");
+      
+      // Create user
+      logStep("Creating user in database");
       const user = await storage.createUser({
         ...userData,
         password: hashedPassword,
       });
+      logStep(`User created with ID: ${user.id}`);
       
+      // Create API keys
+      logStep("Creating initial API keys");
       await storage.createInitialApiKeys(user.id);
+      logStep("API keys created");
       
-      // Seed example transactions for new user with unique transaction IDs (batch insert for performance)
+      // Seed example transactions (reduced to 4 for faster registration)
+      logStep("Creating example transactions");
       const userPrefix = user.id.slice(0, 8);
       const exampleTransactions = [
         { transactionId: `TRX-${userPrefix}-001`, type: "income", amount: 150000, status: "success", customer: "Budi Santoso", method: "QRIS", createdAt: new Date(), userId: user.id },
         { transactionId: `TRX-${userPrefix}-002`, type: "income", amount: 25000, status: "success", customer: "Siti Aminah", method: "QRIS", createdAt: new Date(), userId: user.id },
         { transactionId: `TRX-${userPrefix}-003`, type: "expense", amount: 500000, status: "pending", customer: "Vendor Payment", method: "Bank Transfer", createdAt: new Date(), userId: user.id },
         { transactionId: `TRX-${userPrefix}-004`, type: "income", amount: 75000, status: "success", customer: "Rudi Hartono", method: "QRIS", createdAt: new Date(), userId: user.id },
-        { transactionId: `TRX-${userPrefix}-005`, type: "income", amount: 200000, status: "failed", customer: "Dewi Lestari", method: "E-Wallet", createdAt: new Date(), userId: user.id },
-        { transactionId: `TRX-${userPrefix}-006`, type: "income", amount: 350000, status: "success", customer: "Andi Pratama", method: "QRIS", createdAt: new Date(), userId: user.id },
-        { transactionId: `TRX-${userPrefix}-007`, type: "expense", amount: 125000, status: "success", customer: "Supplier ABC", method: "Bank Transfer", createdAt: new Date(), userId: user.id },
-        { transactionId: `TRX-${userPrefix}-008`, type: "income", amount: 450000, status: "success", customer: "Maya Sari", method: "E-Wallet", createdAt: new Date(), userId: user.id },
       ];
       
       await storage.createTransactionsBatch(exampleTransactions);
+      logStep("Example transactions created");
       
+      // Save session
+      logStep("Saving session");
       req.session.userId = user.id;
       
       req.session.save((err) => {
         if (err) {
-          return res.status(500).json({ message: "Failed to save session" });
+          logStep(`Session save failed: ${err.message}`);
+          console.error("[Register] Session save error:", err);
+          return res.status(500).json({ 
+            message: "Gagal menyimpan sesi. Silakan coba lagi.",
+            error: "SESSION_SAVE_FAILED",
+            debug: { steps: debugLog, sessionError: err.message, totalTime: Date.now() - startTime }
+          });
         }
+        logStep("Session saved successfully");
+        logStep(`Registration complete - total time: ${Date.now() - startTime}ms`);
+        
         const { password, ...userWithoutPassword } = user;
-        res.status(201).json(userWithoutPassword);
+        res.status(201).json({
+          ...userWithoutPassword,
+          debug: { steps: debugLog, totalTime: Date.now() - startTime }
+        });
       });
     } catch (error: any) {
-      console.error("Registration error:", error);
-      console.error("Registration error stack:", error?.stack);
+      const elapsed = Date.now() - startTime;
+      logStep(`Error occurred: ${error?.message}`);
+      console.error("[Register] Error:", error);
+      console.error("[Register] Stack:", error?.stack);
       
       if (error instanceof z.ZodError) {
-        return res.status(400).json({ message: "Validation error", errors: error.errors });
+        const validationErrors = error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join(', ');
+        return res.status(400).json({ 
+          message: `Data tidak valid: ${validationErrors}`,
+          error: "VALIDATION_ERROR",
+          details: error.errors,
+          debug: { steps: debugLog, totalTime: elapsed }
+        });
+      }
+      
+      // Check for specific database errors
+      if (error?.code === '23505') {
+        return res.status(400).json({ 
+          message: "Username atau email sudah digunakan",
+          error: "DUPLICATE_ENTRY",
+          debug: { steps: debugLog, totalTime: elapsed }
+        });
+      }
+      
+      if (error?.code === 'ECONNREFUSED' || error?.message?.includes('connect')) {
+        return res.status(503).json({ 
+          message: "Database tidak dapat dijangkau. Silakan coba beberapa saat lagi.",
+          error: "DATABASE_CONNECTION_ERROR",
+          debug: { steps: debugLog, totalTime: elapsed }
+        });
       }
       
       res.status(500).json({ 
-        message: "Internal server error",
-        error: process.env.NODE_ENV === 'development' ? error?.message : undefined
+        message: "Terjadi kesalahan server. Silakan coba lagi.",
+        error: "INTERNAL_ERROR",
+        details: error?.message,
+        debug: { steps: debugLog, totalTime: elapsed }
       });
     }
   });
 
   app.post("/api/auth/login", authRateLimiter, async (req, res) => {
+    const startTime = Date.now();
+    const debugLog: string[] = [];
+    
+    const logStep = (step: string) => {
+      const elapsed = Date.now() - startTime;
+      debugLog.push(`[${elapsed}ms] ${step}`);
+      console.log(`[Login] [${elapsed}ms] ${step}`);
+    };
+    
     try {
+      logStep("Starting login");
       const { username, password } = req.body;
       
       if (!username || !password) {
-        return res.status(400).json({ message: "Username and password are required" });
+        logStep("Missing credentials");
+        return res.status(400).json({ 
+          message: "Username dan password harus diisi",
+          error: "MISSING_CREDENTIALS",
+          debug: { steps: debugLog, totalTime: Date.now() - startTime }
+        });
       }
       
+      logStep("Looking up user");
       const user = await storage.getUserByUsername(username);
       if (!user) {
-        return res.status(401).json({ message: "Invalid credentials" });
+        logStep("User not found");
+        return res.status(401).json({ 
+          message: "Username atau password salah",
+          error: "INVALID_CREDENTIALS",
+          debug: { steps: debugLog, totalTime: Date.now() - startTime }
+        });
       }
+      logStep("User found");
       
+      logStep("Verifying password");
       const passwordMatch = await bcrypt.compare(password, user.password);
       if (!passwordMatch) {
-        return res.status(401).json({ message: "Invalid credentials" });
+        logStep("Password mismatch");
+        return res.status(401).json({ 
+          message: "Username atau password salah",
+          error: "INVALID_CREDENTIALS",
+          debug: { steps: debugLog, totalTime: Date.now() - startTime }
+        });
       }
+      logStep("Password verified");
       
+      logStep("Saving session");
       req.session.userId = user.id;
       
       req.session.save((err) => {
         if (err) {
-          return res.status(500).json({ message: "Failed to save session" });
+          logStep(`Session save failed: ${err.message}`);
+          console.error("[Login] Session save error:", err);
+          return res.status(500).json({ 
+            message: "Gagal menyimpan sesi. Silakan coba lagi.",
+            error: "SESSION_SAVE_FAILED",
+            debug: { steps: debugLog, sessionError: err.message, totalTime: Date.now() - startTime }
+          });
         }
+        logStep("Session saved");
+        logStep(`Login complete - total time: ${Date.now() - startTime}ms`);
+        
         const { password: _, ...userWithoutPassword } = user;
-        res.json(userWithoutPassword);
+        res.json({
+          ...userWithoutPassword,
+          debug: { steps: debugLog, totalTime: Date.now() - startTime }
+        });
       });
-    } catch (error) {
-      res.status(500).json({ message: "Internal server error" });
+    } catch (error: any) {
+      const elapsed = Date.now() - startTime;
+      logStep(`Error: ${error?.message}`);
+      console.error("[Login] Error:", error);
+      console.error("[Login] Stack:", error?.stack);
+      
+      if (error?.code === 'ECONNREFUSED' || error?.message?.includes('connect')) {
+        return res.status(503).json({ 
+          message: "Database tidak dapat dijangkau. Silakan coba beberapa saat lagi.",
+          error: "DATABASE_CONNECTION_ERROR",
+          debug: { steps: debugLog, totalTime: elapsed }
+        });
+      }
+      
+      res.status(500).json({ 
+        message: "Terjadi kesalahan server. Silakan coba lagi.",
+        error: "INTERNAL_ERROR",
+        details: error?.message,
+        debug: { steps: debugLog, totalTime: elapsed }
+      });
     }
   });
 

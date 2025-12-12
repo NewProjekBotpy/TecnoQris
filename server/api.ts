@@ -2,8 +2,6 @@ import express, { type Request, Response, NextFunction } from "express";
 import serverless from "serverless-http";
 import crypto from "crypto";
 import { SignJWT, jwtVerify } from "jose";
-import { storage } from "../server/storage";
-import { db } from "./db";
 import {
   insertUserSchema,
   insertTransactionSchema,
@@ -14,30 +12,88 @@ import {
 } from "../shared/schema";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
-import { getSakurupiahService, SakurupiahError, SakurupiahConfigError } from "../server/sakurupiah";
 
-let sakurupiahService: ReturnType<typeof getSakurupiahService> | null = null;
+import { initializeDatabase, isDatabaseConfigured as checkDatabaseConfigured, getInitializationError } from "./db";
+
+let storage: any = null;
+let sakurupiahService: any = null;
 let sakurupiahConfigured = false;
+let servicesInitialized = false;
 
-function initSakurupiahService() {
-  if (sakurupiahService !== null || sakurupiahConfigured) return;
-  
-  try {
-    sakurupiahService = getSakurupiahService();
-    sakurupiahConfigured = true;
-    console.log('[Payment] Sakurupiah service initialized successfully');
-  } catch (error) {
-    if (error instanceof SakurupiahConfigError) {
-      console.warn('[Payment] Sakurupiah not configured - running in sandbox mode. Set SAKURUPIAH_API_ID and SAKURUPIAH_API_KEY to enable production payments.');
-      sakurupiahConfigured = false;
-    } else {
-      console.error('[Payment] Failed to initialize Sakurupiah service:', error);
-      sakurupiahConfigured = false;
-    }
-  }
+function isDatabaseConfigured(): boolean {
+  return checkDatabaseConfigured();
 }
 
-initSakurupiahService();
+async function initializeServices(): Promise<boolean> {
+  if (servicesInitialized && storage !== null) return true;
+  
+  if (!isDatabaseConfigured()) {
+    console.error('[Init] DATABASE_URL not configured');
+    return false;
+  }
+
+  const dbResult = await initializeDatabase();
+  if (!dbResult.success) {
+    console.error('[Init] Failed to initialize database:', dbResult.error);
+    return false;
+  }
+
+  try {
+    const storageModule = await import("../server/storage");
+    storage = storageModule.storage;
+    console.log('[Init] Database and storage initialized successfully');
+  } catch (error: any) {
+    console.error('[Init] Failed to initialize storage:', error?.message);
+    return false;
+  }
+
+  try {
+    const sakurupiahModule = await import("../server/sakurupiah");
+    sakurupiahService = sakurupiahModule.getSakurupiahService();
+    sakurupiahConfigured = true;
+    console.log('[Payment] Sakurupiah service initialized successfully');
+  } catch (error: any) {
+    if (error?.message?.includes('SAKURUPIAH')) {
+      console.warn('[Payment] Sakurupiah not configured - running in sandbox mode');
+    } else {
+      console.error('[Payment] Failed to initialize Sakurupiah service:', error?.message);
+    }
+    sakurupiahConfigured = false;
+  }
+  
+  servicesInitialized = true;
+  return true;
+}
+
+function requireDatabase(req: Request, res: Response, next: NextFunction) {
+  if (!isDatabaseConfigured) {
+    return res.status(503).json({
+      message: "Database not configured",
+      error: "DATABASE_URL environment variable is not set. Please configure it in Vercel dashboard under Settings > Environment Variables.",
+      code: "DATABASE_NOT_CONFIGURED"
+    });
+  }
+  
+  if (initializationError) {
+    return res.status(503).json({
+      message: "Database initialization failed",
+      error: initializationError.message,
+      code: "DATABASE_INIT_FAILED"
+    });
+  }
+  
+  if (!storage) {
+    return res.status(503).json({
+      message: "Service not ready",
+      error: "Database connection is being established. Please try again in a moment.",
+      code: "SERVICE_NOT_READY"
+    });
+  }
+  
+  next();
+}
+
+initializeServices();
 
 const app = express();
 
@@ -102,6 +158,16 @@ function getTokenFromRequest(req: Request): string | null {
 }
 
 async function isAuthenticated(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+  await initializeServices();
+  
+  if (!isDatabaseConfigured || !storage) {
+    return res.status(503).json({ 
+      message: "Service unavailable", 
+      error: "Database not configured. Please check DATABASE_URL in Vercel environment variables.",
+      code: "DATABASE_NOT_CONFIGURED"
+    });
+  }
+  
   const token = getTokenFromRequest(req);
   
   if (!token) {
@@ -118,6 +184,18 @@ async function isAuthenticated(req: AuthenticatedRequest, res: Response, next: N
 }
 
 async function apiKeyAuth(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+  await initializeServices();
+  
+  if (!isDatabaseConfigured || !storage) {
+    return res.status(503).json({ 
+      success: false,
+      error: {
+        code: "DATABASE_NOT_CONFIGURED",
+        message: "Database not configured. Please check DATABASE_URL in Vercel environment variables."
+      }
+    });
+  }
+  
   const apiKeyHeader = req.headers["x-api-key"] as string;
   
   if (!apiKeyHeader) {
@@ -158,7 +236,8 @@ async function apiKeyAuth(req: AuthenticatedRequest, res: Response, next: NextFu
     req.apiKey = apiKey;
     req.apiKeyUserId = apiKey.userId;
     next();
-  } catch (error) {
+  } catch (error: any) {
+    console.error("API key auth error:", error?.message || error);
     return res.status(500).json({ 
       success: false,
       error: {
@@ -239,11 +318,16 @@ const webhookRateLimiter = createRateLimiter({
 });
 
 app.get("/api/health", async (req, res) => {
+  await initializeServices();
+  
   const sakurupiahStatus = sakurupiahConfigured ? "configured" : "not_configured";
-  const dbConfigured = !!process.env.DATABASE_URL;
   
   let dbConnection = "unknown";
-  if (dbConfigured) {
+  if (!isDatabaseConfigured) {
+    dbConnection = "not_configured: DATABASE_URL not set";
+  } else if (initializationError) {
+    dbConnection = `error: ${initializationError.message}`;
+  } else if (storage) {
     try {
       await storage.getPaymentChannels();
       dbConnection = "connected";
@@ -251,18 +335,19 @@ app.get("/api/health", async (req, res) => {
       dbConnection = `error: ${error.message}`;
     }
   } else {
-    dbConnection = "not_configured: DATABASE_URL not set";
+    dbConnection = "initializing";
   }
 
   res.json({
-    status: "ok",
+    status: isDatabaseConfigured && storage ? "ok" : "degraded",
     timestamp: new Date().toISOString(),
     environment: process.env.NODE_ENV || "unknown",
+    vercel: process.env.VERCEL === '1' || !!process.env.VERCEL_ENV,
     services: {
       postgresql: {
-        configured: dbConfigured,
+        configured: isDatabaseConfigured,
         connection: dbConnection,
-        error: dbConfigured ? null : "DATABASE_URL not set"
+        error: isDatabaseConfigured ? (initializationError?.message || null) : "DATABASE_URL not set"
       },
       sakurupiah: sakurupiahStatus
     },
@@ -275,8 +360,10 @@ app.get("/api/health", async (req, res) => {
   });
 });
 
-app.post("/api/auth/register", authRateLimiter, async (req, res) => {
+app.post("/api/auth/register", authRateLimiter, requireDatabase, async (req, res) => {
   try {
+    await initializeServices();
+    
     const userData = insertUserSchema.parse(req.body);
     
     const existingUser = await storage.getUserByUsername(userData.username);
@@ -318,29 +405,33 @@ app.post("/api/auth/register", authRateLimiter, async (req, res) => {
     const { password, ...userWithoutPassword } = user;
     res.status(201).json({ ...userWithoutPassword, token });
   } catch (error: any) {
-    console.error("Registration error:", error);
+    console.error("Registration error:", error?.message || error);
     console.error("Registration error stack:", error?.stack);
     
     if (error instanceof z.ZodError) {
       return res.status(400).json({ message: "Validation error", errors: error.errors });
     }
     
-    if (error?.message?.includes("DATABASE_URL")) {
+    if (error?.message?.includes("DATABASE_URL") || error?.message?.includes("database") || error?.code === 'ECONNREFUSED') {
       return res.status(503).json({ 
-        message: "Database not configured", 
-        details: "Please ensure DATABASE_URL is set in environment variables."
+        message: "Database connection error", 
+        error: "Unable to connect to database. Please check DATABASE_URL environment variable in Vercel.",
+        code: "DATABASE_CONNECTION_ERROR"
       });
     }
     
     res.status(500).json({ 
       message: "Internal server error",
-      error: process.env.NODE_ENV === 'development' ? error?.message : undefined
+      error: process.env.NODE_ENV !== 'production' ? error?.message : undefined,
+      code: "INTERNAL_ERROR"
     });
   }
 });
 
-app.post("/api/auth/login", authRateLimiter, async (req, res) => {
+app.post("/api/auth/login", authRateLimiter, requireDatabase, async (req, res) => {
   try {
+    await initializeServices();
+    
     const { username, password } = req.body;
     
     if (!username || !password) {
@@ -364,16 +455,17 @@ app.post("/api/auth/login", authRateLimiter, async (req, res) => {
     const { password: _, ...userWithoutPassword } = user;
     res.json({ ...userWithoutPassword, token });
   } catch (error: any) {
-    console.error("Login error:", error);
+    console.error("Login error:", error?.message || error);
     
-    if (error?.message?.includes("DATABASE_URL")) {
+    if (error?.message?.includes("DATABASE_URL") || error?.message?.includes("database") || error?.code === 'ECONNREFUSED') {
       return res.status(503).json({ 
-        message: "Database not configured", 
-        details: "Please ensure DATABASE_URL is set in environment variables."
+        message: "Database connection error", 
+        error: "Unable to connect to database. Please check DATABASE_URL environment variable in Vercel.",
+        code: "DATABASE_CONNECTION_ERROR"
       });
     }
     
-    res.status(500).json({ message: "Internal server error" });
+    res.status(500).json({ message: "Internal server error", code: "INTERNAL_ERROR" });
   }
 });
 
@@ -657,7 +749,7 @@ app.patch("/api/api-keys/:id/status", isAuthenticated as any, async (req: Authen
   try {
     const apiKeys = await storage.getApiKeys(req.userId!);
     
-    const apiKey = apiKeys.find(k => k.id === req.params.id);
+    const apiKey = apiKeys.find((k: any) => k.id === req.params.id);
     if (!apiKey) {
       return res.status(404).json({ message: "API key not found" });
     }
@@ -859,7 +951,7 @@ app.get("/api/v1/payments", apiV1RateLimiter, apiKeyAuth as any, async (req: Aut
 
     res.json({
       success: true,
-      data: payments.map(payment => ({
+      data: payments.map((payment: any) => ({
         id: payment.id,
         external_id: payment.externalId,
         amount: payment.amount,
@@ -1160,8 +1252,10 @@ app.get("/api/v1/payments/:id/status", apiV1RateLimiter, apiKeyAuth as any, asyn
   }
 });
 
-app.post("/api/v1/webhooks/sakurupiah", webhookRateLimiter, async (req: Request, res: Response) => {
+app.post("/api/v1/webhooks/sakurupiah", webhookRateLimiter, requireDatabase, async (req: Request, res: Response) => {
   try {
+    await initializeServices();
+    
     const signature = req.headers['x-signature'] as string || req.headers['x-sakurupiah-signature'] as string;
     const rawBody = JSON.stringify(req.body);
 
@@ -1206,10 +1300,10 @@ app.post("/api/v1/webhooks/sakurupiah", webhookRateLimiter, async (req: Request,
     }
 
     const payments = await storage.getPayments('', 1000);
-    let payment = payments.find(p => p.providerRef === reference);
+    let payment = payments.find((p: any) => p.providerRef === reference);
     
     if (!payment && merchant_ref) {
-      payment = payments.find(p => p.externalId === merchant_ref || p.id.includes(merchant_ref));
+      payment = payments.find((p: any) => p.externalId === merchant_ref || p.id.includes(merchant_ref));
     }
 
     if (!payment) {
@@ -1279,15 +1373,16 @@ app.post("/api/v1/webhooks/sakurupiah", webhookRateLimiter, async (req: Request,
   }
 });
 
-app.get("/api/v1/payment-channels", apiV1RateLimiter, async (req: Request, res: Response) => {
+app.get("/api/v1/payment-channels", apiV1RateLimiter, requireDatabase, async (req: Request, res: Response) => {
   try {
+    await initializeServices();
     const channels = await storage.getPaymentChannels();
     
-    const activeChannels = channels.filter(c => c.isActive);
+    const activeChannels = channels.filter((c: any) => c.isActive);
 
     res.json({
       success: true,
-      data: activeChannels.map(channel => ({
+      data: activeChannels.map((channel: any) => ({
         code: channel.code,
         name: channel.name,
         type: channel.type,

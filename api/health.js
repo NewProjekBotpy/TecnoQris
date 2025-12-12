@@ -1,6 +1,6 @@
-import postgres from 'postgres';
+const postgres = require('postgres');
 
-export default async function handler(req, res) {
+module.exports = async function handler(req, res) {
   const startTime = Date.now();
   const results = {
     timestamp: new Date().toISOString(),

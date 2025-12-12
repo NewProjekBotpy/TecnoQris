@@ -1,6 +1,6 @@
 import { build as esbuild } from "esbuild";
 import { build as viteBuild } from "vite";
-import { rm, readFile, mkdir, copyFile } from "fs/promises";
+import { rm, readFile, mkdir } from "fs/promises";
 
 const allowlist = [
   "@google/generative-ai",

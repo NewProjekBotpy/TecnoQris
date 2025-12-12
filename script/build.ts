@@ -61,6 +61,27 @@ async function buildAll() {
   });
 
   console.log("building Vercel API function...");
+  
+  // For Vercel, mark heavy dependencies as external to reduce bundle size
+  // Vercel will install these from package.json during deployment
+  const vercelExternals = [
+    "express",
+    "serverless-http",
+    "pg",
+    "postgres",
+    "drizzle-orm",
+    "drizzle-zod",
+    "bcryptjs",
+    "jose",
+    "zod",
+    "zod-validation-error",
+    "crypto",
+    "path",
+    "fs",
+    "url",
+    "module",
+  ];
+  
   await esbuild({
     entryPoints: ["server/api.ts"],
     platform: "node",
@@ -72,6 +93,7 @@ async function buildAll() {
     },
     minify: true,
     logLevel: "info",
+    external: vercelExternals,
     banner: {
       js: `import { createRequire } from 'module'; const require = createRequire(import.meta.url);`,
     },

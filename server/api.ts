@@ -380,18 +380,6 @@ app.post("/api/auth/register", authRateLimiter, requireDatabase, async (req, res
       password: hashedPassword,
     });
     
-    await storage.createInitialApiKeys(user.id);
-    
-    const userPrefix = user.id.slice(0, 8);
-    const exampleTransactions = [
-      { userId: user.id, transactionId: `TRX-${userPrefix}-001`, type: "income", amount: 150000, status: "success", customer: "Budi Santoso", method: "QRIS", createdAt: new Date() },
-      { userId: user.id, transactionId: `TRX-${userPrefix}-002`, type: "income", amount: 25000, status: "success", customer: "Siti Aminah", method: "QRIS", createdAt: new Date() },
-      { userId: user.id, transactionId: `TRX-${userPrefix}-003`, type: "expense", amount: 500000, status: "pending", customer: "Vendor Payment", method: "Bank Transfer", createdAt: new Date() },
-      { userId: user.id, transactionId: `TRX-${userPrefix}-004`, type: "income", amount: 75000, status: "success", customer: "Rudi Hartono", method: "QRIS", createdAt: new Date() },
-    ];
-    
-    await storage.createTransactionsBatch(exampleTransactions);
-    
     const token = await createToken(user.id);
     
     res.setHeader("Set-Cookie", `auth_token=${token}; Path=/; HttpOnly; Secure; SameSite=None; Max-Age=86400`);

@@ -281,24 +281,6 @@ export async function registerRoutes(
       });
       logStep(`User created with ID: ${user.id}`);
       
-      // Create API keys
-      logStep("Creating initial API keys");
-      await storage.createInitialApiKeys(user.id);
-      logStep("API keys created");
-      
-      // Seed example transactions (reduced to 4 for faster registration)
-      logStep("Creating example transactions");
-      const userPrefix = user.id.slice(0, 8);
-      const exampleTransactions = [
-        { transactionId: `TRX-${userPrefix}-001`, type: "income", amount: 150000, status: "success", customer: "Budi Santoso", method: "QRIS", createdAt: new Date(), userId: user.id },
-        { transactionId: `TRX-${userPrefix}-002`, type: "income", amount: 25000, status: "success", customer: "Siti Aminah", method: "QRIS", createdAt: new Date(), userId: user.id },
-        { transactionId: `TRX-${userPrefix}-003`, type: "expense", amount: 500000, status: "pending", customer: "Vendor Payment", method: "Bank Transfer", createdAt: new Date(), userId: user.id },
-        { transactionId: `TRX-${userPrefix}-004`, type: "income", amount: 75000, status: "success", customer: "Rudi Hartono", method: "QRIS", createdAt: new Date(), userId: user.id },
-      ];
-      
-      await storage.createTransactionsBatch(exampleTransactions);
-      logStep("Example transactions created");
-      
       // Save session
       logStep("Saving session");
       req.session.userId = user.id;

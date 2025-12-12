@@ -95,6 +95,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const handleLogout = useCallback(async () => {
     try {
       await api.auth.logout();
+      localStorage.removeItem("auth_token");
       queryClient.clear();
       toast({
         title: "Logged out",
@@ -102,6 +103,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       });
       setLocation("/");
     } catch (error) {
+      localStorage.removeItem("auth_token");
       setLocation("/");
     }
   }, [toast, setLocation]);
@@ -145,7 +147,22 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }
 
   if (!user) {
-    return null;
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center space-y-4 p-8">
+          <div className="w-12 h-12 mx-auto rounded-full bg-destructive/10 flex items-center justify-center">
+            <AlertCircle className="h-6 w-6 text-destructive" />
+          </div>
+          <h2 className="text-xl font-semibold">Sesi Berakhir</h2>
+          <p className="text-muted-foreground text-sm max-w-sm">
+            Silakan login kembali untuk melanjutkan.
+          </p>
+          <Button onClick={() => setLocation("/login")} className="mt-4">
+            Kembali ke Login
+          </Button>
+        </div>
+      </div>
+    );
   }
 
   const userInitials = user.name

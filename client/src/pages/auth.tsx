@@ -31,24 +31,32 @@ export default function AuthPage() {
 
     try {
       if (isLogin) {
-        const user = await api.auth.login({
+        const response = await api.auth.login({
           username: formData.username,
           password: formData.password,
         });
-        queryClient.setQueryData(["/api/auth/me"], user);
+        const token = (response as any).token;
+        if (token) {
+          localStorage.setItem("auth_token", token);
+        }
+        queryClient.setQueryData(["/api/auth/me"], response);
         toast({
           title: "Login berhasil",
           description: "Selamat datang kembali!",
           variant: "success",
         });
       } else {
-        const user = await api.auth.register({
+        const response = await api.auth.register({
           username: formData.username,
           password: formData.password,
           name: formData.name,
           email: formData.email,
         });
-        queryClient.setQueryData(["/api/auth/me"], user);
+        const token = (response as any).token;
+        if (token) {
+          localStorage.setItem("auth_token", token);
+        }
+        queryClient.setQueryData(["/api/auth/me"], response);
         toast({
           title: "Registrasi berhasil",
           description: "Akun Anda telah dibuat dengan data contoh.",

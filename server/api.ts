@@ -1419,4 +1419,7 @@ app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
   res.status(status).json({ message });
 });
 
-export default serverless(app);
+// CRITICAL: Don't wait for database pool to close - fixes Vercel timeout
+const handler = serverless(app);
+module.exports = handler;
+module.exports.handler = handler;

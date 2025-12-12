@@ -48,8 +48,9 @@ export async function initializeDatabase(): Promise<DatabaseInitResult> {
     const poolConfig: pg.PoolConfig = {
       connectionString,
       max: isVercel ? 1 : 10,
-      idleTimeoutMillis: isVercel ? 10000 : 30000,
-      connectionTimeoutMillis: 10000,
+      idleTimeoutMillis: isVercel ? 5000 : 30000,
+      connectionTimeoutMillis: isVercel ? 5000 : 10000,
+      statement_timeout: isVercel ? 25000 : 60000,
     };
 
     if (isProduction || connectionString.includes('neon.tech') || connectionString.includes('supabase')) {

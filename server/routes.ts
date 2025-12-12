@@ -10,7 +10,7 @@ import {
   insertQrCodeSchema,
   insertPaymentSchema,
   type ApiKey,
-} from "@shared/schema";
+} from "../shared/schema";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
 import { getSakurupiahService, SakurupiahError, SakurupiahConfigError } from "./sakurupiah";

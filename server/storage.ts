@@ -21,7 +21,7 @@ import {
   type PaymentChannel,
   type InsertPaymentChannel,
   type UpdatePaymentChannel,
-} from "@shared/schema";
+} from "../shared/schema";
 
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;

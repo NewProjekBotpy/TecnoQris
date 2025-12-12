@@ -3,7 +3,7 @@ import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { ArrowRight, Shield, Zap, Globe, CheckCircle2, ChevronRight, Play, CreditCard, Smartphone, BarChart3, Lock, Bell, User, Laptop, Clock } from "lucide-react";
 import { SocialMediaIcons } from "@/components/SocialMediaIcons";
-import heroImage from "@assets/generated_images/abstract_blue_and_purple_fintech_background.png";
+const heroImage = "https://images.unsplash.com/photo-1639762681485-074b7f938ba0?w=1200&q=80";
 import { useState, useEffect, useMemo } from "react";
 import { Logo } from "@/components/Logo";
 import { ScrollReveal, StaggerContainer, StaggerItem } from "@/components/ScrollReveal";

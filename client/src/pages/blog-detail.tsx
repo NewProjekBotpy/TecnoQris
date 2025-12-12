@@ -7,15 +7,15 @@ import { ScrollReveal } from "@/components/ScrollReveal";
 import { SocialMediaIcons, showSocialMediaWarning } from "@/components/SocialMediaIcons";
 import React, { useState, useEffect } from "react";
 
-import qrisPayment1 from "@assets/stock_images/qris_qr_code_payment_2f63f55d.jpg";
-import qrisPayment2 from "@assets/stock_images/qris_qr_code_payment_16d0fc5e.jpg";
-import qrisPayment3 from "@assets/stock_images/qris_qr_code_payment_fb60e63b.jpg";
-import analytics1 from "@assets/stock_images/business_analytics_d_7bdcce47.jpg";
-import analytics2 from "@assets/stock_images/business_analytics_d_6af2251d.jpg";
-import security1 from "@assets/stock_images/cybersecurity_digita_7525356b.jpg";
-import security2 from "@assets/stock_images/cybersecurity_digita_cf4da9c3.jpg";
-import coffeeShop1 from "@assets/stock_images/coffee_shop_cafe_sma_ddeb608c.jpg";
-import coffeeShop2 from "@assets/stock_images/coffee_shop_cafe_sma_18d7d013.jpg";
+const qrisPayment1 = "https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?w=800&q=80";
+const qrisPayment2 = "https://images.unsplash.com/photo-1563013544-824ae1b704d3?w=800&q=80";
+const qrisPayment3 = "https://images.unsplash.com/photo-1556742111-a301076d9d18?w=800&q=80";
+const analytics1 = "https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=800&q=80";
+const analytics2 = "https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=800&q=80";
+const security1 = "https://images.unsplash.com/photo-1550751827-4bd374c3f58b?w=800&q=80";
+const security2 = "https://images.unsplash.com/photo-1555949963-aa79dcee981c?w=800&q=80";
+const coffeeShop1 = "https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?w=800&q=80";
+const coffeeShop2 = "https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?w=800&q=80";
 
 interface BlogPost {
   id: number;

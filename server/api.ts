@@ -94,7 +94,8 @@ function requireDatabase(req: Request, res: Response, next: NextFunction) {
   next();
 }
 
-initializeServices();
+// Initialize services lazily - don't block cold start
+// initializeServices() is called on-demand by routes that need database
 
 const app = express();
 
@@ -118,6 +119,11 @@ app.set("trust proxy", 1);
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
+
+// Simple ping endpoint - no database required, fast response for health checks
+app.get("/api/ping", (req, res) => {
+  res.json({ status: "ok", timestamp: Date.now() });
+});
 
 async function createToken(userId: string): Promise<string> {
   const token = await new SignJWT({ userId })

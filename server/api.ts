@@ -66,7 +66,7 @@ async function initializeServices(): Promise<boolean> {
 }
 
 function requireDatabase(req: Request, res: Response, next: NextFunction) {
-  if (!isDatabaseConfigured) {
+  if (!isDatabaseConfigured()) {
     return res.status(503).json({
       message: "Database not configured",
       error: "DATABASE_URL environment variable is not set. Please configure it in Vercel dashboard under Settings > Environment Variables.",
@@ -74,10 +74,11 @@ function requireDatabase(req: Request, res: Response, next: NextFunction) {
     });
   }
   
-  if (initializationError) {
+  const initError = getInitializationError();
+  if (initError) {
     return res.status(503).json({
       message: "Database initialization failed",
-      error: initializationError.message,
+      error: initError.message,
       code: "DATABASE_INIT_FAILED"
     });
   }
@@ -160,7 +161,7 @@ function getTokenFromRequest(req: Request): string | null {
 async function isAuthenticated(req: AuthenticatedRequest, res: Response, next: NextFunction) {
   await initializeServices();
   
-  if (!isDatabaseConfigured || !storage) {
+  if (!isDatabaseConfigured() || !storage) {
     return res.status(503).json({ 
       message: "Service unavailable", 
       error: "Database not configured. Please check DATABASE_URL in Vercel environment variables.",
@@ -186,7 +187,7 @@ async function isAuthenticated(req: AuthenticatedRequest, res: Response, next: N
 async function apiKeyAuth(req: AuthenticatedRequest, res: Response, next: NextFunction) {
   await initializeServices();
   
-  if (!isDatabaseConfigured || !storage) {
+  if (!isDatabaseConfigured() || !storage) {
     return res.status(503).json({ 
       success: false,
       error: {
@@ -321,12 +322,14 @@ app.get("/api/health", async (req, res) => {
   await initializeServices();
   
   const sakurupiahStatus = sakurupiahConfigured ? "configured" : "not_configured";
+  const dbConfigured = isDatabaseConfigured();
+  const initError = getInitializationError();
   
   let dbConnection = "unknown";
-  if (!isDatabaseConfigured) {
+  if (!dbConfigured) {
     dbConnection = "not_configured: DATABASE_URL not set";
-  } else if (initializationError) {
-    dbConnection = `error: ${initializationError.message}`;
+  } else if (initError) {
+    dbConnection = `error: ${initError.message}`;
   } else if (storage) {
     try {
       await storage.getPaymentChannels();
@@ -339,15 +342,15 @@ app.get("/api/health", async (req, res) => {
   }
 
   res.json({
-    status: isDatabaseConfigured && storage ? "ok" : "degraded",
+    status: dbConfigured && storage ? "ok" : "degraded",
     timestamp: new Date().toISOString(),
     environment: process.env.NODE_ENV || "unknown",
     vercel: process.env.VERCEL === '1' || !!process.env.VERCEL_ENV,
     services: {
       postgresql: {
-        configured: isDatabaseConfigured,
+        configured: dbConfigured,
         connection: dbConnection,
-        error: isDatabaseConfigured ? (initializationError?.message || null) : "DATABASE_URL not set"
+        error: dbConfigured ? (initError?.message || null) : "DATABASE_URL not set"
       },
       sakurupiah: sakurupiahStatus
     },

@@ -6,7 +6,7 @@ import { createServer } from "http";
 import pg from "pg";
 import connectPgSimple from "connect-pg-simple";
 import MemoryStore from "memorystore";
-import { db } from "./db";
+import { initializeDatabase, getDb } from "./db";
 
 const MemoryStoreSession = MemoryStore(session);
 const PgSession = connectPgSimple(session);
@@ -103,10 +103,14 @@ app.use((req, res, next) => {
 });
 
 (async () => {
-  // Verify PostgreSQL database connection
+  // Initialize and verify PostgreSQL database connection
   try {
-    await db.execute("SELECT 1");
-    console.log("PostgreSQL database connected");
+    const result = await initializeDatabase();
+    if (result.success) {
+      console.log("PostgreSQL database connected");
+    } else {
+      console.warn("PostgreSQL connection warning:", result.error);
+    }
   } catch (error) {
     console.error("PostgreSQL connection error:", error);
   }

@@ -1,8 +1,7 @@
 import express, { type Request, Response, NextFunction } from "express";
-import session from "express-session";
-import MemoryStore from "memorystore";
 import serverless from "serverless-http";
 import crypto from "crypto";
+import { SignJWT, jwtVerify } from "jose";
 import { storage } from "../server/storage";
 import { checkAstraDbConfig } from "../server/astradb";
 import {
@@ -40,17 +39,20 @@ function initSakurupiahService() {
 
 initSakurupiahService();
 
-const MemoryStoreSession = MemoryStore(session);
-
 const app = express();
 
-declare module "express-session" {
-  interface SessionData {
-    userId?: string;
-  }
+const JWT_SECRET = new TextEncoder().encode(
+  process.env.SESSION_SECRET || "fintech-dashboard-secret-key-2024"
+);
+
+interface JWTPayload {
+  userId: string;
+  iat?: number;
+  exp?: number;
 }
 
 interface AuthenticatedRequest extends Request {
+  userId?: string;
   apiKey?: ApiKey;
   apiKeyUserId?: string;
 }
@@ -60,30 +62,59 @@ app.set("trust proxy", 1);
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
-const sessionStore = new MemoryStoreSession({
-  checkPeriod: 86400000,
-});
+async function createToken(userId: string): Promise<string> {
+  const token = await new SignJWT({ userId })
+    .setProtectedHeader({ alg: "HS256" })
+    .setIssuedAt()
+    .setExpirationTime("24h")
+    .sign(JWT_SECRET);
+  return token;
+}
 
-app.use(
-  session({
-    secret: process.env.SESSION_SECRET || "fintech-dashboard-secret-key-2024",
-    resave: false,
-    saveUninitialized: false,
-    cookie: {
-      secure: true,
-      httpOnly: true,
-      maxAge: 24 * 60 * 60 * 1000,
-      sameSite: "none",
-    },
-    store: sessionStore,
-  })
-);
-
-function isAuthenticated(req: any, res: any, next: any) {
-  if (req.session.userId) {
-    return next();
+async function verifyToken(token: string): Promise<JWTPayload | null> {
+  try {
+    const { payload } = await jwtVerify(token, JWT_SECRET);
+    if (typeof payload.userId === 'string') {
+      return { userId: payload.userId, iat: payload.iat, exp: payload.exp };
+    }
+    return null;
+  } catch {
+    return null;
   }
-  res.status(401).json({ message: "Unauthorized" });
+}
+
+function getTokenFromRequest(req: Request): string | null {
+  const authHeader = req.headers.authorization;
+  if (authHeader && authHeader.startsWith("Bearer ")) {
+    return authHeader.slice(7);
+  }
+  
+  const cookieHeader = req.headers.cookie;
+  if (cookieHeader) {
+    const cookies = cookieHeader.split(";").map(c => c.trim());
+    const tokenCookie = cookies.find(c => c.startsWith("auth_token="));
+    if (tokenCookie) {
+      return tokenCookie.split("=")[1];
+    }
+  }
+  
+  return null;
+}
+
+async function isAuthenticated(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+  const token = getTokenFromRequest(req);
+  
+  if (!token) {
+    return res.status(401).json({ message: "Unauthorized" });
+  }
+  
+  const payload = await verifyToken(token);
+  if (!payload || !payload.userId) {
+    return res.status(401).json({ message: "Invalid or expired token" });
+  }
+  
+  req.userId = payload.userId;
+  next();
 }
 
 async function apiKeyAuth(req: AuthenticatedRequest, res: Response, next: NextFunction) {
@@ -281,15 +312,12 @@ app.post("/api/auth/register", authRateLimiter, async (req, res) => {
       });
     }
     
-    req.session.userId = user._id;
+    const token = await createToken(user._id);
     
-    req.session.save((err) => {
-      if (err) {
-        return res.status(500).json({ message: "Failed to save session" });
-      }
-      const { password, ...userWithoutPassword } = user;
-      res.status(201).json(userWithoutPassword);
-    });
+    res.setHeader("Set-Cookie", `auth_token=${token}; Path=/; HttpOnly; Secure; SameSite=None; Max-Age=86400`);
+    
+    const { password, ...userWithoutPassword } = user;
+    res.status(201).json({ ...userWithoutPassword, token });
   } catch (error: any) {
     console.error("Registration error:", error);
     console.error("Registration error stack:", error?.stack);
@@ -330,16 +358,12 @@ app.post("/api/auth/login", authRateLimiter, async (req, res) => {
       return res.status(401).json({ message: "Invalid credentials" });
     }
     
-    req.session.userId = user._id;
+    const token = await createToken(user._id);
     
-    req.session.save((err) => {
-      if (err) {
-        console.error("Session save error:", err);
-        return res.status(500).json({ message: "Failed to save session" });
-      }
-      const { password: _, ...userWithoutPassword } = user;
-      res.json(userWithoutPassword);
-    });
+    res.setHeader("Set-Cookie", `auth_token=${token}; Path=/; HttpOnly; Secure; SameSite=None; Max-Age=86400`);
+    
+    const { password: _, ...userWithoutPassword } = user;
+    res.json({ ...userWithoutPassword, token });
   } catch (error: any) {
     console.error("Login error:", error);
     
@@ -355,17 +379,13 @@ app.post("/api/auth/login", authRateLimiter, async (req, res) => {
 });
 
 app.post("/api/auth/logout", authRateLimiter, (req, res) => {
-  req.session.destroy((err) => {
-    if (err) {
-      return res.status(500).json({ message: "Failed to logout" });
-    }
-    res.json({ message: "Logged out successfully" });
-  });
+  res.setHeader("Set-Cookie", `auth_token=; Path=/; HttpOnly; Secure; SameSite=None; Max-Age=0`);
+  res.json({ message: "Logged out successfully" });
 });
 
-app.get("/api/auth/me", isAuthenticated, async (req, res) => {
+app.get("/api/auth/me", isAuthenticated as any, async (req: AuthenticatedRequest, res) => {
   try {
-    const user = await storage.getUser(req.session.userId!);
+    const user = await storage.getUser(req.userId!);
     if (!user) {
       return res.status(404).json({ message: "User not found" });
     }
@@ -377,24 +397,24 @@ app.get("/api/auth/me", isAuthenticated, async (req, res) => {
   }
 });
 
-app.get("/api/transactions", isAuthenticated, async (req, res) => {
+app.get("/api/transactions", isAuthenticated as any, async (req: AuthenticatedRequest, res) => {
   try {
     const limit = req.query.limit ? parseInt(req.query.limit as string) : 100;
-    const transactions = await storage.getTransactions(req.session.userId!, limit);
+    const transactions = await storage.getTransactions(req.userId!, limit);
     res.json(transactions);
   } catch (error) {
     res.status(500).json({ message: "Internal server error" });
   }
 });
 
-app.get("/api/transactions/:id", isAuthenticated, async (req, res) => {
+app.get("/api/transactions/:id", isAuthenticated as any, async (req: AuthenticatedRequest, res) => {
   try {
     const transaction = await storage.getTransactionById(req.params.id);
     if (!transaction) {
       return res.status(404).json({ message: "Transaction not found" });
     }
     
-    if (transaction.userId !== req.session.userId) {
+    if (transaction.userId !== req.userId) {
       return res.status(403).json({ message: "Forbidden" });
     }
     
@@ -404,11 +424,11 @@ app.get("/api/transactions/:id", isAuthenticated, async (req, res) => {
   }
 });
 
-app.post("/api/transactions", isAuthenticated, async (req, res) => {
+app.post("/api/transactions", isAuthenticated as any, async (req: AuthenticatedRequest, res) => {
   try {
     const transactionData = insertTransactionSchema.parse({
       ...req.body,
-      userId: req.session.userId,
+      userId: req.userId,
     });
     
     const transaction = await storage.createTransaction(transactionData);
@@ -421,14 +441,14 @@ app.post("/api/transactions", isAuthenticated, async (req, res) => {
   }
 });
 
-app.put("/api/transactions/:id", isAuthenticated, async (req, res) => {
+app.put("/api/transactions/:id", isAuthenticated as any, async (req: AuthenticatedRequest, res) => {
   try {
     const existingTransaction = await storage.getTransactionById(req.params.id);
     if (!existingTransaction) {
       return res.status(404).json({ message: "Transaction not found" });
     }
     
-    if (existingTransaction.userId !== req.session.userId) {
+    if (existingTransaction.userId !== req.userId) {
       return res.status(403).json({ message: "Forbidden" });
     }
     
@@ -443,23 +463,23 @@ app.put("/api/transactions/:id", isAuthenticated, async (req, res) => {
   }
 });
 
-app.get("/api/wallets", isAuthenticated, async (req, res) => {
+app.get("/api/wallets", isAuthenticated as any, async (req: AuthenticatedRequest, res) => {
   try {
-    const wallets = await storage.getWallets(req.session.userId!);
+    const wallets = await storage.getWallets(req.userId!);
     res.json(wallets);
   } catch (error) {
     res.status(500).json({ message: "Internal server error" });
   }
 });
 
-app.get("/api/wallets/:id", isAuthenticated, async (req, res) => {
+app.get("/api/wallets/:id", isAuthenticated as any, async (req: AuthenticatedRequest, res) => {
   try {
     const wallet = await storage.getWalletById(req.params.id);
     if (!wallet) {
       return res.status(404).json({ message: "Wallet not found" });
     }
     
-    if (wallet.userId !== req.session.userId) {
+    if (wallet.userId !== req.userId) {
       return res.status(403).json({ message: "Forbidden" });
     }
     
@@ -469,11 +489,11 @@ app.get("/api/wallets/:id", isAuthenticated, async (req, res) => {
   }
 });
 
-app.post("/api/wallets", isAuthenticated, async (req, res) => {
+app.post("/api/wallets", isAuthenticated as any, async (req: AuthenticatedRequest, res) => {
   try {
     const walletData = insertWalletSchema.parse({
       ...req.body,
-      userId: req.session.userId,
+      userId: req.userId,
     });
     
     const wallet = await storage.createWallet(walletData);
@@ -486,14 +506,14 @@ app.post("/api/wallets", isAuthenticated, async (req, res) => {
   }
 });
 
-app.put("/api/wallets/:id", isAuthenticated, async (req, res) => {
+app.put("/api/wallets/:id", isAuthenticated as any, async (req: AuthenticatedRequest, res) => {
   try {
     const existingWallet = await storage.getWalletById(req.params.id);
     if (!existingWallet) {
       return res.status(404).json({ message: "Wallet not found" });
     }
     
-    if (existingWallet.userId !== req.session.userId) {
+    if (existingWallet.userId !== req.userId) {
       return res.status(403).json({ message: "Forbidden" });
     }
     
@@ -508,14 +528,14 @@ app.put("/api/wallets/:id", isAuthenticated, async (req, res) => {
   }
 });
 
-app.delete("/api/wallets/:id", isAuthenticated, async (req, res) => {
+app.delete("/api/wallets/:id", isAuthenticated as any, async (req: AuthenticatedRequest, res) => {
   try {
     const existingWallet = await storage.getWalletById(req.params.id);
     if (!existingWallet) {
       return res.status(404).json({ message: "Wallet not found" });
     }
     
-    if (existingWallet.userId !== req.session.userId) {
+    if (existingWallet.userId !== req.userId) {
       return res.status(403).json({ message: "Forbidden" });
     }
     
@@ -526,23 +546,23 @@ app.delete("/api/wallets/:id", isAuthenticated, async (req, res) => {
   }
 });
 
-app.get("/api/qr-codes", isAuthenticated, async (req, res) => {
+app.get("/api/qr-codes", isAuthenticated as any, async (req: AuthenticatedRequest, res) => {
   try {
-    const qrCodes = await storage.getQrCodes(req.session.userId!);
+    const qrCodes = await storage.getQrCodes(req.userId!);
     res.json(qrCodes);
   } catch (error) {
     res.status(500).json({ message: "Internal server error" });
   }
 });
 
-app.get("/api/qr-codes/:id", isAuthenticated, async (req, res) => {
+app.get("/api/qr-codes/:id", isAuthenticated as any, async (req: AuthenticatedRequest, res) => {
   try {
     const qrCode = await storage.getQrCodeById(req.params.id);
     if (!qrCode) {
       return res.status(404).json({ message: "QR code not found" });
     }
     
-    if (qrCode.userId !== req.session.userId) {
+    if (qrCode.userId !== req.userId) {
       return res.status(403).json({ message: "Forbidden" });
     }
     
@@ -552,11 +572,11 @@ app.get("/api/qr-codes/:id", isAuthenticated, async (req, res) => {
   }
 });
 
-app.post("/api/qr-codes", isAuthenticated, async (req, res) => {
+app.post("/api/qr-codes", isAuthenticated as any, async (req: AuthenticatedRequest, res) => {
   try {
     const qrCodeData = insertQrCodeSchema.parse({
       ...req.body,
-      userId: req.session.userId,
+      userId: req.userId,
     });
     
     const qrCode = await storage.createQrCode(qrCodeData);
@@ -569,14 +589,14 @@ app.post("/api/qr-codes", isAuthenticated, async (req, res) => {
   }
 });
 
-app.put("/api/qr-codes/:id", isAuthenticated, async (req, res) => {
+app.put("/api/qr-codes/:id", isAuthenticated as any, async (req: AuthenticatedRequest, res) => {
   try {
     const existingQrCode = await storage.getQrCodeById(req.params.id);
     if (!existingQrCode) {
       return res.status(404).json({ message: "QR code not found" });
     }
     
-    if (existingQrCode.userId !== req.session.userId) {
+    if (existingQrCode.userId !== req.userId) {
       return res.status(403).json({ message: "Forbidden" });
     }
     
@@ -591,14 +611,14 @@ app.put("/api/qr-codes/:id", isAuthenticated, async (req, res) => {
   }
 });
 
-app.delete("/api/qr-codes/:id", isAuthenticated, async (req, res) => {
+app.delete("/api/qr-codes/:id", isAuthenticated as any, async (req: AuthenticatedRequest, res) => {
   try {
     const existingQrCode = await storage.getQrCodeById(req.params.id);
     if (!existingQrCode) {
       return res.status(404).json({ message: "QR code not found" });
     }
     
-    if (existingQrCode.userId !== req.session.userId) {
+    if (existingQrCode.userId !== req.userId) {
       return res.status(403).json({ message: "Forbidden" });
     }
     
@@ -609,16 +629,16 @@ app.delete("/api/qr-codes/:id", isAuthenticated, async (req, res) => {
   }
 });
 
-app.get("/api/api-keys", isAuthenticated, async (req, res) => {
+app.get("/api/api-keys", isAuthenticated as any, async (req: AuthenticatedRequest, res) => {
   try {
-    const apiKeys = await storage.getApiKeys(req.session.userId!);
+    const apiKeys = await storage.getApiKeys(req.userId!);
     res.json(apiKeys);
   } catch (error) {
     res.status(500).json({ message: "Internal server error" });
   }
 });
 
-app.post("/api/api-keys", isAuthenticated, async (req, res) => {
+app.post("/api/api-keys", isAuthenticated as any, async (req: AuthenticatedRequest, res) => {
   try {
     const { mode } = req.body;
     if (!mode || (mode !== 'sandbox' && mode !== 'live')) {
@@ -627,16 +647,16 @@ app.post("/api/api-keys", isAuthenticated, async (req, res) => {
     
     const prefix = mode === 'sandbox' ? 'sk_sandbox_' : 'sk_live_';
     const randomKey = prefix + crypto.randomBytes(24).toString('hex');
-    const apiKey = await storage.createOrResetApiKey(req.session.userId!, mode, randomKey);
+    const apiKey = await storage.createOrResetApiKey(req.userId!, mode, randomKey);
     res.status(201).json(apiKey);
   } catch (error) {
     res.status(500).json({ message: "Internal server error" });
   }
 });
 
-app.patch("/api/api-keys/:id/status", isAuthenticated, async (req, res) => {
+app.patch("/api/api-keys/:id/status", isAuthenticated as any, async (req: AuthenticatedRequest, res) => {
   try {
-    const apiKeys = await storage.getApiKeys(req.session.userId!);
+    const apiKeys = await storage.getApiKeys(req.userId!);
     
     const apiKey = apiKeys.find(k => k._id === req.params.id);
     if (!apiKey) {
@@ -655,21 +675,21 @@ app.patch("/api/api-keys/:id/status", isAuthenticated, async (req, res) => {
   }
 });
 
-app.get("/api/analytics/stats", isAuthenticated, async (req, res) => {
+app.get("/api/analytics/stats", isAuthenticated as any, async (req: AuthenticatedRequest, res) => {
   try {
-    const stats = await storage.getTransactionStats(req.session.userId!);
+    const stats = await storage.getTransactionStats(req.userId!);
     res.json(stats);
   } catch (error) {
     res.status(500).json({ message: "Internal server error" });
   }
 });
 
-app.get("/api/analytics/revenue", isAuthenticated, async (req, res) => {
+app.get("/api/analytics/revenue", isAuthenticated as any, async (req: AuthenticatedRequest, res) => {
   try {
     const startDate = req.query.startDate ? new Date(req.query.startDate as string) : undefined;
     const endDate = req.query.endDate ? new Date(req.query.endDate as string) : undefined;
     
-    const revenue = await storage.getRevenueStats(req.session.userId!, startDate, endDate);
+    const revenue = await storage.getRevenueStats(req.userId!, startDate, endDate);
     res.json(revenue);
   } catch (error) {
     res.status(500).json({ message: "Internal server error" });
@@ -685,137 +705,108 @@ const createPaymentSchema = z.object({
   customer_email: z.string().email().optional(),
   customer_phone: z.string().max(20).optional(),
   callback_url: z.string().url().optional(),
-  return_url: z.string().url().optional(),
-  expires_in_minutes: z.number().int().positive().max(1440).default(30),
-  idempotency_key: z.string().max(100).optional(),
+  expiry_minutes: z.number().int().positive().min(5).max(1440).default(30),
 });
 
 app.post("/api/v1/payments", apiV1RateLimiter, apiKeyAuth as any, async (req: AuthenticatedRequest, res) => {
   try {
     const validatedData = createPaymentSchema.parse(req.body);
     
-    if (validatedData.idempotency_key) {
-      const existingPaymentByKey = await storage.getPaymentByIdempotencyKey(validatedData.idempotency_key);
-      if (existingPaymentByKey) {
+    const idempotencyKey = req.headers['x-idempotency-key'] as string;
+    if (idempotencyKey) {
+      const existingPayment = await storage.getPaymentByIdempotencyKey(idempotencyKey);
+      if (existingPayment) {
         return res.status(200).json({
           success: true,
           data: {
-            id: existingPaymentByKey._id,
-            external_id: existingPaymentByKey.externalId,
-            amount: existingPaymentByKey.amount,
-            fee_amount: existingPaymentByKey.feeAmount,
-            net_amount: existingPaymentByKey.netAmount,
-            description: existingPaymentByKey.description,
-            customer_name: existingPaymentByKey.customerName,
-            customer_email: existingPaymentByKey.customerEmail,
-            status: existingPaymentByKey.status,
-            payment_method: existingPaymentByKey.paymentMethod,
-            qr_string: existingPaymentByKey.qrString,
-            provider_ref: existingPaymentByKey.providerRef,
-            expires_at: existingPaymentByKey.expiresAt,
-            paid_at: existingPaymentByKey.paidAt || null,
-            created_at: existingPaymentByKey.createdAt,
+            id: existingPayment._id,
+            external_id: existingPayment.externalId,
+            amount: existingPayment.amount,
+            description: existingPayment.description,
+            customer_name: existingPayment.customerName,
+            customer_email: existingPayment.customerEmail,
+            status: existingPayment.status,
+            payment_method: existingPayment.paymentMethod,
+            qr_string: existingPayment.qrString,
+            qr_url: existingPayment.qrUrl,
+            expires_at: existingPayment.expiresAt,
+            created_at: existingPayment.createdAt,
           },
-          idempotent: true,
+          meta: {
+            idempotent: true,
+            sandbox_mode: !sakurupiahConfigured,
+          }
         });
       }
     }
-    
-    const existingPayment = await storage.getPaymentByExternalId(validatedData.external_id);
-    if (existingPayment) {
-      return res.status(409).json({
-        success: false,
-        error: {
-          code: "DUPLICATE_EXTERNAL_ID",
-          message: "A payment with this external_id already exists."
-        }
-      });
+
+    const channel = await storage.getPaymentChannelByCode(validatedData.payment_method);
+    if (!channel) {
+      await storage.seedPaymentChannels();
     }
 
     const paymentChannel = await storage.getPaymentChannelByCode(validatedData.payment_method);
-    let feeAmount = 0;
-    if (paymentChannel) {
-      feeAmount = paymentChannel.feeFlat + Math.floor(validatedData.amount * paymentChannel.feePercentage / 100);
-    }
+    const feePercentage = paymentChannel?.feePercentage || 0.7;
+    const feeFlat = paymentChannel?.feeFlat || 0;
+    const feeAmount = Math.ceil((validatedData.amount * feePercentage / 100) + feeFlat);
+    const netAmount = validatedData.amount - feeAmount;
 
-    const paymentId = `PAY-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+    const expiresAt = new Date(Date.now() + validatedData.expiry_minutes * 60 * 1000).toISOString();
     
-    let qrString = '';
-    let providerRef: string | null = null;
-    let expiresAt: Date;
-    let providerStatus: string | null = null;
-    let signatureHash: string | null = null;
+    let qrString = "";
+    let qrUrl = "";
+    let providerRef = "";
 
     if (sakurupiahConfigured && sakurupiahService) {
       try {
         const sakurupiahResponse = await sakurupiahService.createTransaction({
           method: validatedData.payment_method,
-          merchant_ref: paymentId,
+          merchant_ref: validatedData.external_id,
           amount: validatedData.amount,
           customer_name: validatedData.customer_name,
           customer_email: validatedData.customer_email,
           customer_phone: validatedData.customer_phone,
+          expired_time: validatedData.expiry_minutes,
           callback_url: validatedData.callback_url,
-          return_url: validatedData.return_url,
-          expired_time: validatedData.expires_in_minutes,
         });
 
-        providerRef = sakurupiahResponse.data.reference;
-        qrString = sakurupiahResponse.data.qr_string || sakurupiahResponse.data.pay_code || sakurupiahResponse.data.pay_url || '';
-        expiresAt = new Date(sakurupiahResponse.data.expired_time);
-        feeAmount = sakurupiahResponse.data.fee || feeAmount;
-        providerStatus = sakurupiahResponse.status;
-        signatureHash = sakurupiahService.generateSignature(
-          validatedData.payment_method,
-          paymentId,
-          validatedData.amount
-        );
-
-        console.log('[Payment] Created transaction via Sakurupiah', { 
-          paymentId, 
-          providerRef,
-          method: validatedData.payment_method 
+        qrString = sakurupiahResponse.data.qr_string || "";
+        qrUrl = sakurupiahResponse.data.qr_url || "";
+        providerRef = sakurupiahResponse.data.reference || "";
+        
+        console.log('[Payment] QRIS created via Sakurupiah', { 
+          externalId: validatedData.external_id, 
+          providerRef 
         });
       } catch (sakurupiahError) {
-        if (sakurupiahError instanceof SakurupiahError) {
-          console.error('[Payment] Sakurupiah API error:', sakurupiahError.message);
-          return res.status(502).json({
-            success: false,
-            error: {
-              code: "PAYMENT_PROVIDER_ERROR",
-              message: `Payment provider error: ${sakurupiahError.message}`,
-              provider_code: sakurupiahError.code,
-            }
-          });
-        }
-        throw sakurupiahError;
+        console.error('[Payment] Sakurupiah error, falling back to sandbox:', sakurupiahError);
+        qrString = generateQRISString(validatedData.external_id, validatedData.amount, validatedData.customer_name);
+        qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(qrString)}`;
       }
     } else {
-      qrString = generateQRISString(paymentId, validatedData.amount);
-      expiresAt = new Date(Date.now() + validatedData.expires_in_minutes * 60 * 1000);
-      console.log('[Payment] Created sandbox payment (Sakurupiah not configured)', { paymentId });
+      qrString = generateQRISString(validatedData.external_id, validatedData.amount, validatedData.customer_name);
+      qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(qrString)}`;
     }
-    
-    const netAmount = validatedData.amount - feeAmount;
-    
+
     const payment = await storage.createPayment({
       userId: req.apiKeyUserId!,
       externalId: validatedData.external_id,
       amount: validatedData.amount,
+      status: "pending",
+      feeAmount,
+      netAmount,
       description: validatedData.description || null,
       customerName: validatedData.customer_name || null,
       customerEmail: validatedData.customer_email || null,
-      status: "pending",
-      qrString: qrString,
-      expiresAt: expiresAt.toISOString(),
+      customerPhone: validatedData.customer_phone || null,
       paymentMethod: validatedData.payment_method,
-      providerRef: providerRef,
-      providerStatus: providerStatus,
-      signatureHash: signatureHash,
-      idempotencyKey: validatedData.idempotency_key || null,
+      qrString,
+      qrUrl,
       callbackUrl: validatedData.callback_url || null,
-      feeAmount: feeAmount,
-      netAmount: netAmount,
+      expiresAt,
+      idempotencyKey: idempotencyKey || null,
+      providerRef: providerRef || null,
+      providerStatus: null,
     });
 
     res.status(201).json({
@@ -832,9 +823,11 @@ app.post("/api/v1/payments", apiV1RateLimiter, apiKeyAuth as any, async (req: Au
         status: payment.status,
         payment_method: payment.paymentMethod,
         qr_string: payment.qrString,
-        provider_ref: payment.providerRef,
+        qr_url: payment.qrUrl,
         expires_at: payment.expiresAt,
         created_at: payment.createdAt,
+      },
+      meta: {
         sandbox_mode: !sakurupiahConfigured,
       }
     });
@@ -862,14 +855,8 @@ app.post("/api/v1/payments", apiV1RateLimiter, apiKeyAuth as any, async (req: Au
 
 app.get("/api/v1/payments", apiV1RateLimiter, apiKeyAuth as any, async (req: AuthenticatedRequest, res) => {
   try {
-    const limit = req.query.limit ? Math.min(parseInt(req.query.limit as string), 100) : 20;
-    const status = req.query.status as string | undefined;
-    
-    let payments = await storage.getPayments(req.apiKeyUserId!, limit);
-    
-    if (status) {
-      payments = payments.filter(p => p.status === status);
-    }
+    const limit = req.query.limit ? parseInt(req.query.limit as string) : 100;
+    const payments = await storage.getPayments(req.apiKeyUserId!, limit);
 
     res.json({
       success: true,
@@ -877,22 +864,24 @@ app.get("/api/v1/payments", apiV1RateLimiter, apiKeyAuth as any, async (req: Aut
         id: payment._id,
         external_id: payment.externalId,
         amount: payment.amount,
+        fee_amount: payment.feeAmount,
+        net_amount: payment.netAmount,
         description: payment.description,
         customer_name: payment.customerName,
-        customer_email: payment.customerEmail,
         status: payment.status,
-        qr_string: payment.qrString,
+        payment_method: payment.paymentMethod,
         expires_at: payment.expiresAt,
-        paid_at: payment.paidAt || null,
+        paid_at: payment.paidAt,
         created_at: payment.createdAt,
       })),
       meta: {
         count: payments.length,
-        limit: limit,
+        limit,
+        sandbox_mode: !sakurupiahConfigured,
       }
     });
   } catch (error) {
-    console.error("List payments error:", error);
+    console.error("Get payments error:", error);
     res.status(500).json({
       success: false,
       error: {
@@ -937,14 +926,22 @@ app.get("/api/v1/payments/:id", apiV1RateLimiter, apiKeyAuth as any, async (req:
         id: payment._id,
         external_id: payment.externalId,
         amount: payment.amount,
+        fee_amount: payment.feeAmount,
+        net_amount: payment.netAmount,
         description: payment.description,
         customer_name: payment.customerName,
         customer_email: payment.customerEmail,
+        customer_phone: payment.customerPhone,
         status: payment.status,
+        payment_method: payment.paymentMethod,
         qr_string: payment.qrString,
+        qr_url: payment.qrUrl,
         expires_at: payment.expiresAt,
-        paid_at: payment.paidAt || null,
+        paid_at: payment.paidAt,
         created_at: payment.createdAt,
+      },
+      meta: {
+        sandbox_mode: !sakurupiahConfigured,
       }
     });
   } catch (error) {
@@ -960,11 +957,21 @@ app.get("/api/v1/payments/:id", apiV1RateLimiter, apiKeyAuth as any, async (req:
 });
 
 const simulatePaymentSchema = z.object({
-  status: z.enum(["paid", "expired", "cancelled"]),
+  status: z.enum(["paid", "expired", "failed"]),
 });
 
 app.post("/api/v1/payments/:id/simulate", apiV1RateLimiter, apiKeyAuth as any, async (req: AuthenticatedRequest, res) => {
   try {
+    if (req.apiKey?.mode !== "sandbox") {
+      return res.status(403).json({
+        success: false,
+        error: {
+          code: "SANDBOX_ONLY",
+          message: "Payment simulation is only available in sandbox mode. Use a sandbox API key."
+        }
+      });
+    }
+
     const validatedData = simulatePaymentSchema.parse(req.body);
     
     let payment = await storage.getPaymentById(req.params.id);

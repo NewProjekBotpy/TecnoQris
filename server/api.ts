@@ -11,17 +11,24 @@ import {
   type ApiKey,
 } from "../shared/schema";
 import { z } from "zod";
-import bcrypt from "bcryptjs";
 
-import { initializeDatabase, isDatabaseConfigured as checkDatabaseConfigured, getInitializationError } from "./db";
-
+// Lazy load heavy modules - don't import at top level
+let bcryptModule: any = null;
+let dbModule: any = null;
 let storage: any = null;
 let sakurupiahService: any = null;
 let sakurupiahConfigured = false;
 let servicesInitialized = false;
 
 function isDatabaseConfigured(): boolean {
-  return checkDatabaseConfigured();
+  return !!process.env.DATABASE_URL;
+}
+
+async function loadBcrypt() {
+  if (!bcryptModule) {
+    bcryptModule = await import("bcryptjs");
+  }
+  return bcryptModule.default || bcryptModule;
 }
 
 async function initializeServices(): Promise<boolean> {
@@ -32,7 +39,12 @@ async function initializeServices(): Promise<boolean> {
     return false;
   }
 
-  const dbResult = await initializeDatabase();
+  // Lazy load db module
+  if (!dbModule) {
+    dbModule = await import("./db");
+  }
+
+  const dbResult = await dbModule.initializeDatabase();
   if (!dbResult.success) {
     console.error('[Init] Failed to initialize database:', dbResult.error);
     return false;
@@ -74,13 +86,15 @@ function requireDatabase(req: Request, res: Response, next: NextFunction) {
     });
   }
   
-  const initError = getInitializationError();
-  if (initError) {
-    return res.status(503).json({
-      message: "Database initialization failed",
-      error: initError.message,
-      code: "DATABASE_INIT_FAILED"
-    });
+  if (dbModule) {
+    const initError = dbModule.getInitializationError?.();
+    if (initError) {
+      return res.status(503).json({
+        message: "Database initialization failed",
+        error: initError.message,
+        code: "DATABASE_INIT_FAILED"
+      });
+    }
   }
   
   if (!storage) {
@@ -329,7 +343,7 @@ app.get("/api/health", async (req, res) => {
   
   const sakurupiahStatus = sakurupiahConfigured ? "configured" : "not_configured";
   const dbConfigured = isDatabaseConfigured();
-  const initError = getInitializationError();
+  const initError = dbModule?.getInitializationError?.() || null;
   
   let dbConnection = "unknown";
   if (!dbConfigured) {
@@ -380,6 +394,7 @@ app.post("/api/auth/register", authRateLimiter, requireDatabase, async (req, res
       return res.status(400).json({ message: "Username already exists" });
     }
     
+    const bcrypt = await loadBcrypt();
     const hashedPassword = await bcrypt.hash(userData.password, 10);
     const user = await storage.createUser({
       ...userData,
@@ -431,6 +446,7 @@ app.post("/api/auth/login", authRateLimiter, requireDatabase, async (req, res) =
       return res.status(401).json({ message: "Invalid credentials" });
     }
     
+    const bcrypt = await loadBcrypt();
     const passwordMatch = await bcrypt.compare(password, user.password);
     if (!passwordMatch) {
       return res.status(401).json({ message: "Invalid credentials" });

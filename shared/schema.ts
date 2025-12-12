@@ -1,147 +1,156 @@
+import { pgTable, text, integer, boolean, timestamp, real, uuid, jsonb } from "drizzle-orm/pg-core";
+import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod";
 
-export const userSchema = z.object({
-  _id: z.string(),
-  username: z.string(),
-  password: z.string(),
-  name: z.string(),
-  email: z.string(),
-  role: z.string().default("Merchant"),
-  balance: z.number().default(0),
-  avatar: z.string().nullable().optional(),
+export const users = pgTable("users", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  username: text("username").notNull().unique(),
+  password: text("password").notNull(),
+  name: text("name").notNull(),
+  email: text("email").notNull(),
+  role: text("role").notNull().default("Merchant"),
+  balance: real("balance").notNull().default(0),
+  avatar: text("avatar"),
 });
 
-export const transactionSchema = z.object({
-  _id: z.string(),
-  userId: z.string(),
-  transactionId: z.string(),
-  type: z.string(),
-  amount: z.number(),
-  status: z.string().default("pending"),
-  customer: z.string(),
-  method: z.string(),
-  createdAt: z.string(),
+export const transactions = pgTable("transactions", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: uuid("user_id").notNull().references(() => users.id),
+  transactionId: text("transaction_id").notNull(),
+  type: text("type").notNull(),
+  amount: real("amount").notNull(),
+  status: text("status").notNull().default("pending"),
+  customer: text("customer").notNull(),
+  method: text("method").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
-export const walletSchema = z.object({
-  _id: z.string(),
-  userId: z.string(),
-  name: z.string(),
-  type: z.string(),
-  accountNumber: z.string().nullable().optional(),
-  bankName: z.string().nullable().optional(),
-  isDefault: z.number().default(0),
-  balance: z.number().default(0),
-  createdAt: z.string(),
+export const wallets = pgTable("wallets", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: uuid("user_id").notNull().references(() => users.id),
+  name: text("name").notNull(),
+  type: text("type").notNull(),
+  accountNumber: text("account_number"),
+  bankName: text("bank_name"),
+  isDefault: boolean("is_default").notNull().default(false),
+  balance: real("balance").notNull().default(0),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
-export const qrCodeSchema = z.object({
-  _id: z.string(),
-  userId: z.string(),
-  name: z.string(),
-  amount: z.number().nullable().optional(),
-  description: z.string().nullable().optional(),
-  qrData: z.string(),
-  isActive: z.number().default(1),
-  createdAt: z.string(),
+export const qrCodes = pgTable("qr_codes", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: uuid("user_id").notNull().references(() => users.id),
+  name: text("name").notNull(),
+  amount: real("amount"),
+  description: text("description"),
+  qrData: text("qr_data").notNull(),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
-export const apiKeySchema = z.object({
-  _id: z.string(),
-  userId: z.string(),
-  name: z.string(),
-  key: z.string(),
-  mode: z.string().default("live"),
-  isActive: z.number().default(1),
-  createdAt: z.string(),
-  lastUsed: z.string().nullable().optional(),
-  requestCount: z.number().default(0),
+export const apiKeys = pgTable("api_keys", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: uuid("user_id").notNull().references(() => users.id),
+  name: text("name").notNull(),
+  key: text("key").notNull().unique(),
+  mode: text("mode").notNull().default("live"),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  lastUsed: timestamp("last_used", { withTimezone: true }),
+  requestCount: integer("request_count").notNull().default(0),
 });
 
-export const paymentSchema = z.object({
-  _id: z.string(),
-  userId: z.string(),
-  externalId: z.string(),
-  amount: z.number(),
-  description: z.string().nullable().optional(),
-  customerName: z.string().nullable().optional(),
-  customerEmail: z.string().nullable().optional(),
-  customerPhone: z.string().nullable().optional(),
-  status: z.string().default("pending"),
-  qrString: z.string(),
-  qrUrl: z.string().nullable().optional(),
-  expiresAt: z.string(),
-  paidAt: z.string().nullable().optional(),
-  createdAt: z.string(),
-  paymentMethod: z.string(),
-  providerRef: z.string().nullable().optional(),
-  providerStatus: z.string().nullable().optional(),
-  signatureHash: z.string().nullable().optional(),
-  idempotencyKey: z.string().nullable().optional(),
-  callbackUrl: z.string().nullable().optional(),
-  feeAmount: z.number().default(0),
-  netAmount: z.number().nullable().optional(),
+export const payments = pgTable("payments", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: uuid("user_id").notNull().references(() => users.id),
+  externalId: text("external_id").notNull(),
+  amount: real("amount").notNull(),
+  description: text("description"),
+  customerName: text("customer_name"),
+  customerEmail: text("customer_email"),
+  customerPhone: text("customer_phone"),
+  status: text("status").notNull().default("pending"),
+  qrString: text("qr_string").notNull(),
+  qrUrl: text("qr_url"),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  paidAt: timestamp("paid_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  paymentMethod: text("payment_method").notNull(),
+  providerRef: text("provider_ref"),
+  providerStatus: text("provider_status"),
+  signatureHash: text("signature_hash"),
+  idempotencyKey: text("idempotency_key").unique(),
+  callbackUrl: text("callback_url"),
+  feeAmount: real("fee_amount").notNull().default(0),
+  netAmount: real("net_amount"),
 });
 
-export const webhookLogSchema = z.object({
-  _id: z.string(),
-  paymentId: z.string(),
-  eventType: z.string(),
-  payload: z.string(),
-  signature: z.string(),
-  verified: z.number(),
-  processedAt: z.string().nullable().optional(),
-  createdAt: z.string(),
+export const webhookLogs = pgTable("webhook_logs", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  paymentId: uuid("payment_id").notNull().references(() => payments.id),
+  eventType: text("event_type").notNull(),
+  payload: text("payload").notNull(),
+  signature: text("signature").notNull(),
+  verified: boolean("verified").notNull().default(false),
+  processedAt: timestamp("processed_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
-export const paymentChannelSchema = z.object({
-  _id: z.string(),
-  code: z.string(),
-  name: z.string(),
-  type: z.string(),
-  isActive: z.number().default(1),
-  feePercentage: z.number().default(0),
-  feeFlat: z.number().default(0),
-  minAmount: z.number().default(1000),
-  maxAmount: z.number().default(100000000),
-  iconUrl: z.string().nullable().optional(),
+export const paymentChannels = pgTable("payment_channels", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  code: text("code").notNull().unique(),
+  name: text("name").notNull(),
+  type: text("type").notNull(),
+  isActive: boolean("is_active").notNull().default(true),
+  feePercentage: real("fee_percentage").notNull().default(0),
+  feeFlat: real("fee_flat").notNull().default(0),
+  minAmount: real("min_amount").notNull().default(1000),
+  maxAmount: real("max_amount").notNull().default(100000000),
+  iconUrl: text("icon_url"),
 });
 
-export const insertUserSchema = userSchema.omit({ _id: true });
-export const insertTransactionSchema = transactionSchema.omit({ _id: true });
-export const insertWalletSchema = walletSchema.omit({ _id: true });
-export const insertQrCodeSchema = qrCodeSchema.omit({ _id: true });
-export const insertApiKeySchema = apiKeySchema.omit({ _id: true, lastUsed: true, requestCount: true });
-export const insertPaymentSchema = paymentSchema.omit({ _id: true, paidAt: true, createdAt: true });
-export const updatePaymentSchema = paymentSchema.omit({ _id: true, createdAt: true }).partial();
-export const insertWebhookLogSchema = webhookLogSchema.omit({ _id: true, processedAt: true });
-export const updateWebhookLogSchema = webhookLogSchema.omit({ _id: true, createdAt: true }).partial();
-export const insertPaymentChannelSchema = paymentChannelSchema.omit({ _id: true });
-export const updatePaymentChannelSchema = paymentChannelSchema.omit({ _id: true }).partial();
-
-export type User = z.infer<typeof userSchema>;
+export const insertUserSchema = createInsertSchema(users).omit({ id: true });
+export const selectUserSchema = createSelectSchema(users);
+export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
 
-export type Transaction = z.infer<typeof transactionSchema>;
+export const insertTransactionSchema = createInsertSchema(transactions).omit({ id: true });
+export const selectTransactionSchema = createSelectSchema(transactions);
+export type Transaction = typeof transactions.$inferSelect;
 export type InsertTransaction = z.infer<typeof insertTransactionSchema>;
 
-export type Wallet = z.infer<typeof walletSchema>;
+export const insertWalletSchema = createInsertSchema(wallets).omit({ id: true });
+export const selectWalletSchema = createSelectSchema(wallets);
+export type Wallet = typeof wallets.$inferSelect;
 export type InsertWallet = z.infer<typeof insertWalletSchema>;
 
-export type QrCode = z.infer<typeof qrCodeSchema>;
+export const insertQrCodeSchema = createInsertSchema(qrCodes).omit({ id: true });
+export const selectQrCodeSchema = createSelectSchema(qrCodes);
+export type QrCode = typeof qrCodes.$inferSelect;
 export type InsertQrCode = z.infer<typeof insertQrCodeSchema>;
 
-export type ApiKey = z.infer<typeof apiKeySchema>;
+export const insertApiKeySchema = createInsertSchema(apiKeys).omit({ id: true, lastUsed: true, requestCount: true });
+export const selectApiKeySchema = createSelectSchema(apiKeys);
+export type ApiKey = typeof apiKeys.$inferSelect;
 export type InsertApiKey = z.infer<typeof insertApiKeySchema>;
 
-export type Payment = z.infer<typeof paymentSchema>;
+export const insertPaymentSchema = createInsertSchema(payments).omit({ id: true, paidAt: true, createdAt: true });
+export const updatePaymentSchema = createInsertSchema(payments).omit({ id: true, createdAt: true }).partial();
+export const selectPaymentSchema = createSelectSchema(payments);
+export type Payment = typeof payments.$inferSelect;
 export type InsertPayment = z.infer<typeof insertPaymentSchema>;
 export type UpdatePayment = z.infer<typeof updatePaymentSchema>;
 
-export type WebhookLog = z.infer<typeof webhookLogSchema>;
+export const insertWebhookLogSchema = createInsertSchema(webhookLogs).omit({ id: true, processedAt: true });
+export const updateWebhookLogSchema = createInsertSchema(webhookLogs).omit({ id: true, createdAt: true }).partial();
+export const selectWebhookLogSchema = createSelectSchema(webhookLogs);
+export type WebhookLog = typeof webhookLogs.$inferSelect;
 export type InsertWebhookLog = z.infer<typeof insertWebhookLogSchema>;
 export type UpdateWebhookLog = z.infer<typeof updateWebhookLogSchema>;
 
-export type PaymentChannel = z.infer<typeof paymentChannelSchema>;
+export const insertPaymentChannelSchema = createInsertSchema(paymentChannels).omit({ id: true });
+export const updatePaymentChannelSchema = createInsertSchema(paymentChannels).omit({ id: true }).partial();
+export const selectPaymentChannelSchema = createSelectSchema(paymentChannels);
+export type PaymentChannel = typeof paymentChannels.$inferSelect;
 export type InsertPaymentChannel = z.infer<typeof insertPaymentChannelSchema>;
 export type UpdatePaymentChannel = z.infer<typeof updatePaymentChannelSchema>;

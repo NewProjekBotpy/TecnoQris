@@ -1,7 +1,15 @@
 import crypto from "crypto";
-import { v4 as uuidv4 } from "uuid";
-import { getAstraDb } from "./astradb";
+import { eq, desc, and, gte, lte, sql } from "drizzle-orm";
+import { db } from "./db";
 import {
+  users,
+  transactions,
+  wallets,
+  qrCodes,
+  apiKeys,
+  payments,
+  webhookLogs,
+  paymentChannels,
   type User,
   type InsertUser,
   type Transaction,
@@ -51,7 +59,7 @@ export interface IStorage {
   getApiKeyByValue(key: string): Promise<ApiKey | undefined>;
   createOrResetApiKey(userId: string, mode: "sandbox" | "live", newKey: string): Promise<ApiKey>;
   createInitialApiKeys(userId: string): Promise<ApiKey[]>;
-  updateApiKeyStatus(id: string, isActive: number): Promise<ApiKey | undefined>;
+  updateApiKeyStatus(id: string, isActive: boolean): Promise<ApiKey | undefined>;
   updateApiKeyLastUsed(id: string): Promise<void>;
   incrementApiKeyUsage(id: string): Promise<void>;
 
@@ -86,350 +94,274 @@ export interface IStorage {
   }>;
 }
 
-export class AstraStorage implements IStorage {
-  private get db() {
-    return getAstraDb();
-  }
-
-  private get users() {
-    return this.db.collection<User>('users');
-  }
-
-  private get transactions() {
-    return this.db.collection<Transaction>('transactions');
-  }
-
-  private get wallets() {
-    return this.db.collection<Wallet>('wallets');
-  }
-
-  private get qrCodes() {
-    return this.db.collection<QrCode>('qr_codes');
-  }
-
-  private get apiKeys() {
-    return this.db.collection<ApiKey>('api_keys');
-  }
-
-  private get payments() {
-    return this.db.collection<Payment>('payments');
-  }
-
-  private get webhookLogs() {
-    return this.db.collection<WebhookLog>('webhook_logs');
-  }
-
-  private get paymentChannels() {
-    return this.db.collection<PaymentChannel>('payment_channels');
-  }
-
+export class DrizzleStorage implements IStorage {
   async getUser(id: string): Promise<User | undefined> {
-    const result = await this.users.findOne({ _id: id });
-    return result || undefined;
+    const result = await db.select().from(users).where(eq(users.id, id)).limit(1);
+    return result[0];
   }
 
   async getUserByUsername(username: string): Promise<User | undefined> {
-    const result = await this.users.findOne({ username });
-    return result || undefined;
+    const result = await db.select().from(users).where(eq(users.username, username)).limit(1);
+    return result[0];
   }
 
   async createUser(insertUser: InsertUser): Promise<User> {
-    const user: User = {
-      _id: uuidv4(),
+    const result = await db.insert(users).values({
       ...insertUser,
       role: insertUser.role || "Merchant",
       balance: insertUser.balance || 0,
       avatar: insertUser.avatar || null,
-    };
-    await this.users.insertOne(user);
-    return user;
+    }).returning();
+    return result[0];
   }
 
   async updateUser(id: string, updates: Partial<InsertUser>): Promise<User | undefined> {
-    await this.users.updateOne({ _id: id }, { $set: updates });
-    return this.getUser(id);
+    const result = await db.update(users).set(updates).where(eq(users.id, id)).returning();
+    return result[0];
   }
 
   async getTransactions(userId: string, limit: number = 100): Promise<Transaction[]> {
-    const cursor = this.transactions.find({ userId }, { limit, sort: { createdAt: -1 } });
-    return cursor.toArray();
+    return db.select().from(transactions)
+      .where(eq(transactions.userId, userId))
+      .orderBy(desc(transactions.createdAt))
+      .limit(limit);
   }
 
   async getTransactionById(id: string): Promise<Transaction | undefined> {
-    const result = await this.transactions.findOne({ _id: id });
-    return result || undefined;
+    const result = await db.select().from(transactions).where(eq(transactions.id, id)).limit(1);
+    return result[0];
   }
 
   async createTransaction(transaction: InsertTransaction): Promise<Transaction> {
-    const newTransaction: Transaction = {
-      _id: uuidv4(),
+    const result = await db.insert(transactions).values({
       ...transaction,
       status: transaction.status || "pending",
-      createdAt: transaction.createdAt || new Date().toISOString(),
-    };
-    await this.transactions.insertOne(newTransaction);
-    return newTransaction;
+    }).returning();
+    return result[0];
   }
 
-  async createTransactionsBatch(transactions: InsertTransaction[]): Promise<Transaction[]> {
-    const newTransactions: Transaction[] = transactions.map(transaction => ({
-      _id: uuidv4(),
-      ...transaction,
-      status: transaction.status || "pending",
-      createdAt: transaction.createdAt || new Date().toISOString(),
+  async createTransactionsBatch(transactionsList: InsertTransaction[]): Promise<Transaction[]> {
+    const prepared = transactionsList.map(tx => ({
+      ...tx,
+      status: tx.status || "pending",
     }));
-    await this.transactions.insertMany(newTransactions);
-    return newTransactions;
+    return db.insert(transactions).values(prepared).returning();
   }
 
   async updateTransaction(id: string, updates: Partial<InsertTransaction>): Promise<Transaction | undefined> {
-    await this.transactions.updateOne({ _id: id }, { $set: updates });
-    return this.getTransactionById(id);
+    const result = await db.update(transactions).set(updates).where(eq(transactions.id, id)).returning();
+    return result[0];
   }
 
   async getWallets(userId: string): Promise<Wallet[]> {
-    const cursor = this.wallets.find({ userId }, { sort: { createdAt: -1 } });
-    return cursor.toArray();
+    return db.select().from(wallets)
+      .where(eq(wallets.userId, userId))
+      .orderBy(desc(wallets.createdAt));
   }
 
   async getWalletById(id: string): Promise<Wallet | undefined> {
-    const result = await this.wallets.findOne({ _id: id });
-    return result || undefined;
+    const result = await db.select().from(wallets).where(eq(wallets.id, id)).limit(1);
+    return result[0];
   }
 
   async createWallet(wallet: InsertWallet): Promise<Wallet> {
-    const newWallet: Wallet = {
-      _id: uuidv4(),
+    const result = await db.insert(wallets).values({
       ...wallet,
-      isDefault: wallet.isDefault || 0,
+      isDefault: wallet.isDefault ?? false,
       balance: wallet.balance || 0,
-      createdAt: wallet.createdAt || new Date().toISOString(),
-    };
-    await this.wallets.insertOne(newWallet);
-    return newWallet;
+    }).returning();
+    return result[0];
   }
 
   async updateWallet(id: string, updates: Partial<InsertWallet>): Promise<Wallet | undefined> {
-    await this.wallets.updateOne({ _id: id }, { $set: updates });
-    return this.getWalletById(id);
+    const result = await db.update(wallets).set(updates).where(eq(wallets.id, id)).returning();
+    return result[0];
   }
 
   async deleteWallet(id: string): Promise<void> {
-    await this.wallets.deleteOne({ _id: id });
+    await db.delete(wallets).where(eq(wallets.id, id));
   }
 
   async getQrCodes(userId: string): Promise<QrCode[]> {
-    const cursor = this.qrCodes.find({ userId }, { sort: { createdAt: -1 } });
-    return cursor.toArray();
+    return db.select().from(qrCodes)
+      .where(eq(qrCodes.userId, userId))
+      .orderBy(desc(qrCodes.createdAt));
   }
 
   async getQrCodeById(id: string): Promise<QrCode | undefined> {
-    const result = await this.qrCodes.findOne({ _id: id });
-    return result || undefined;
+    const result = await db.select().from(qrCodes).where(eq(qrCodes.id, id)).limit(1);
+    return result[0];
   }
 
   async createQrCode(qrCode: InsertQrCode): Promise<QrCode> {
-    const newQrCode: QrCode = {
-      _id: uuidv4(),
+    const result = await db.insert(qrCodes).values({
       ...qrCode,
-      isActive: qrCode.isActive ?? 1,
-      createdAt: qrCode.createdAt || new Date().toISOString(),
-    };
-    await this.qrCodes.insertOne(newQrCode);
-    return newQrCode;
+      isActive: qrCode.isActive ?? true,
+    }).returning();
+    return result[0];
   }
 
   async updateQrCode(id: string, updates: Partial<InsertQrCode>): Promise<QrCode | undefined> {
-    await this.qrCodes.updateOne({ _id: id }, { $set: updates });
-    return this.getQrCodeById(id);
+    const result = await db.update(qrCodes).set(updates).where(eq(qrCodes.id, id)).returning();
+    return result[0];
   }
 
   async deleteQrCode(id: string): Promise<void> {
-    await this.qrCodes.deleteOne({ _id: id });
+    await db.delete(qrCodes).where(eq(qrCodes.id, id));
   }
 
   async getApiKeys(userId: string): Promise<ApiKey[]> {
-    const cursor = this.apiKeys.find({ userId }, { sort: { createdAt: -1 } });
-    return cursor.toArray();
+    return db.select().from(apiKeys)
+      .where(eq(apiKeys.userId, userId))
+      .orderBy(desc(apiKeys.createdAt));
+  }
+
+  async getApiKeyByValue(key: string): Promise<ApiKey | undefined> {
+    const result = await db.select().from(apiKeys).where(eq(apiKeys.key, key)).limit(1);
+    return result[0];
   }
 
   async createOrResetApiKey(userId: string, mode: "sandbox" | "live", newKey: string): Promise<ApiKey> {
-    await this.apiKeys.deleteMany({ userId, mode });
+    await db.delete(apiKeys).where(and(eq(apiKeys.userId, userId), eq(apiKeys.mode, mode)));
+    
     const name = mode === "sandbox" ? "Sandbox Key" : "Live Key";
-    const apiKey: ApiKey = {
-      _id: uuidv4(),
+    const result = await db.insert(apiKeys).values({
       userId,
       name,
       key: newKey,
       mode,
-      isActive: 1,
-      createdAt: new Date().toISOString(),
-      lastUsed: null,
-      requestCount: 0,
-    };
-    await this.apiKeys.insertOne(apiKey);
-    return apiKey;
+      isActive: true,
+    }).returning();
+    return result[0];
   }
 
   async createInitialApiKeys(userId: string): Promise<ApiKey[]> {
     const sandboxKey = 'sk_sandbox_' + crypto.randomBytes(24).toString('hex');
     const liveKey = 'sk_live_' + crypto.randomBytes(24).toString('hex');
     
-    const keys: ApiKey[] = [
+    return db.insert(apiKeys).values([
       {
-        _id: uuidv4(),
         userId,
         name: "Sandbox Key",
         key: sandboxKey,
         mode: "sandbox",
-        isActive: 1,
-        createdAt: new Date().toISOString(),
-        lastUsed: null,
-        requestCount: 0,
+        isActive: true,
       },
       {
-        _id: uuidv4(),
         userId,
         name: "Live Key",
         key: liveKey,
         mode: "live",
-        isActive: 1,
-        createdAt: new Date().toISOString(),
-        lastUsed: null,
-        requestCount: 0,
+        isActive: true,
       }
-    ];
-    
-    await this.apiKeys.insertMany(keys);
-    return keys;
+    ]).returning();
   }
 
-  async updateApiKeyStatus(id: string, isActive: number): Promise<ApiKey | undefined> {
-    await this.apiKeys.updateOne({ _id: id }, { $set: { isActive } });
-    const result = await this.apiKeys.findOne({ _id: id });
-    return result || undefined;
+  async updateApiKeyStatus(id: string, isActive: boolean): Promise<ApiKey | undefined> {
+    const result = await db.update(apiKeys).set({ isActive }).where(eq(apiKeys.id, id)).returning();
+    return result[0];
   }
 
   async updateApiKeyLastUsed(id: string): Promise<void> {
-    await this.apiKeys.updateOne({ _id: id }, { $set: { lastUsed: new Date().toISOString() } });
-  }
-
-  async getApiKeyByValue(key: string): Promise<ApiKey | undefined> {
-    const result = await this.apiKeys.findOne({ key });
-    return result || undefined;
+    await db.update(apiKeys).set({ lastUsed: new Date() }).where(eq(apiKeys.id, id));
   }
 
   async incrementApiKeyUsage(id: string): Promise<void> {
-    const apiKey = await this.apiKeys.findOne({ _id: id });
-    if (apiKey) {
-      await this.apiKeys.updateOne({ _id: id }, { 
-        $set: { 
-          lastUsed: new Date().toISOString(),
-          requestCount: (apiKey.requestCount || 0) + 1
-        }
-      });
-    }
+    await db.update(apiKeys)
+      .set({ 
+        lastUsed: new Date(),
+        requestCount: sql`${apiKeys.requestCount} + 1`
+      })
+      .where(eq(apiKeys.id, id));
   }
 
   async getPayments(userId: string, limit: number = 100): Promise<Payment[]> {
-    const cursor = this.payments.find({ userId }, { limit, sort: { createdAt: -1 } });
-    return cursor.toArray();
+    return db.select().from(payments)
+      .where(eq(payments.userId, userId))
+      .orderBy(desc(payments.createdAt))
+      .limit(limit);
   }
 
   async getPaymentById(id: string): Promise<Payment | undefined> {
-    const result = await this.payments.findOne({ _id: id });
-    return result || undefined;
+    const result = await db.select().from(payments).where(eq(payments.id, id)).limit(1);
+    return result[0];
   }
 
   async getPaymentByExternalId(externalId: string): Promise<Payment | undefined> {
-    const result = await this.payments.findOne({ externalId });
-    return result || undefined;
+    const result = await db.select().from(payments).where(eq(payments.externalId, externalId)).limit(1);
+    return result[0];
   }
 
   async getPaymentByIdempotencyKey(key: string): Promise<Payment | undefined> {
-    const result = await this.payments.findOne({ idempotencyKey: key });
-    return result || undefined;
+    const result = await db.select().from(payments).where(eq(payments.idempotencyKey, key)).limit(1);
+    return result[0];
   }
 
   async createPayment(payment: InsertPayment): Promise<Payment> {
-    const newPayment: Payment = {
-      _id: uuidv4(),
+    const result = await db.insert(payments).values({
       ...payment,
       status: payment.status || "pending",
-      createdAt: new Date().toISOString(),
-      paidAt: null,
-    };
-    await this.payments.insertOne(newPayment);
-    return newPayment;
+    }).returning();
+    return result[0];
   }
 
   async updatePayment(id: string, updates: UpdatePayment): Promise<Payment | undefined> {
-    await this.payments.updateOne({ _id: id }, { $set: updates });
-    return this.getPaymentById(id);
+    const result = await db.update(payments).set(updates).where(eq(payments.id, id)).returning();
+    return result[0];
   }
 
   async getWebhookLogs(paymentId: string): Promise<WebhookLog[]> {
-    const cursor = this.webhookLogs.find({ paymentId }, { sort: { createdAt: -1 } });
-    return cursor.toArray();
+    return db.select().from(webhookLogs)
+      .where(eq(webhookLogs.paymentId, paymentId))
+      .orderBy(desc(webhookLogs.createdAt));
   }
 
   async createWebhookLog(log: InsertWebhookLog): Promise<WebhookLog> {
-    const newLog: WebhookLog = {
-      _id: uuidv4(),
-      ...log,
-      processedAt: null,
-      createdAt: log.createdAt || new Date().toISOString(),
-    };
-    await this.webhookLogs.insertOne(newLog);
-    return newLog;
+    const result = await db.insert(webhookLogs).values(log).returning();
+    return result[0];
   }
 
   async updateWebhookLog(id: string, updates: UpdateWebhookLog): Promise<WebhookLog | undefined> {
-    await this.webhookLogs.updateOne({ _id: id }, { $set: updates });
-    const result = await this.webhookLogs.findOne({ _id: id });
-    return result || undefined;
+    const result = await db.update(webhookLogs).set(updates).where(eq(webhookLogs.id, id)).returning();
+    return result[0];
   }
 
   async getPaymentChannels(): Promise<PaymentChannel[]> {
-    const cursor = this.paymentChannels.find({}, { sort: { code: 1 } });
-    return cursor.toArray();
+    return db.select().from(paymentChannels).orderBy(paymentChannels.code);
   }
 
   async getPaymentChannelByCode(code: string): Promise<PaymentChannel | undefined> {
-    const result = await this.paymentChannels.findOne({ code });
-    return result || undefined;
+    const result = await db.select().from(paymentChannels).where(eq(paymentChannels.code, code)).limit(1);
+    return result[0];
   }
 
   async createPaymentChannel(channel: InsertPaymentChannel): Promise<PaymentChannel> {
-    const newChannel: PaymentChannel = {
-      _id: uuidv4(),
+    const result = await db.insert(paymentChannels).values({
       ...channel,
-      isActive: channel.isActive ?? 1,
+      isActive: channel.isActive ?? true,
       feePercentage: channel.feePercentage ?? 0,
       feeFlat: channel.feeFlat ?? 0,
       minAmount: channel.minAmount ?? 1000,
       maxAmount: channel.maxAmount ?? 100000000,
       iconUrl: channel.iconUrl || null,
-    };
-    await this.paymentChannels.insertOne(newChannel);
-    return newChannel;
+    }).returning();
+    return result[0];
   }
 
   async updatePaymentChannel(id: string, updates: UpdatePaymentChannel): Promise<PaymentChannel | undefined> {
-    await this.paymentChannels.updateOne({ _id: id }, { $set: updates });
-    const result = await this.paymentChannels.findOne({ _id: id });
-    return result || undefined;
+    const result = await db.update(paymentChannels).set(updates).where(eq(paymentChannels.id, id)).returning();
+    return result[0];
   }
 
   async seedPaymentChannels(): Promise<void> {
     const defaultChannels: InsertPaymentChannel[] = [
-      { code: 'QRIS', name: 'QRIS Payment', type: 'qris', isActive: 1, feePercentage: 0.7, feeFlat: 0, minAmount: 1000, maxAmount: 10000000 },
-      { code: 'BCAVA', name: 'BCA Virtual Account', type: 'va', isActive: 1, feePercentage: 0, feeFlat: 4000, minAmount: 10000, maxAmount: 100000000 },
-      { code: 'BRIVA', name: 'BRI Virtual Account', type: 'va', isActive: 1, feePercentage: 0, feeFlat: 4000, minAmount: 10000, maxAmount: 100000000 },
-      { code: 'BNIVA', name: 'BNI Virtual Account', type: 'va', isActive: 1, feePercentage: 0, feeFlat: 4000, minAmount: 10000, maxAmount: 100000000 },
-      { code: 'GOPAY', name: 'GoPay', type: 'ewallet', isActive: 1, feePercentage: 2, feeFlat: 0, minAmount: 1000, maxAmount: 10000000 },
-      { code: 'DANA', name: 'DANA', type: 'ewallet', isActive: 1, feePercentage: 1.5, feeFlat: 0, minAmount: 1000, maxAmount: 10000000 },
-      { code: 'OVO', name: 'OVO', type: 'ewallet', isActive: 1, feePercentage: 2, feeFlat: 0, minAmount: 1000, maxAmount: 10000000 },
+      { code: 'QRIS', name: 'QRIS Payment', type: 'qris', isActive: true, feePercentage: 0.7, feeFlat: 0, minAmount: 1000, maxAmount: 10000000 },
+      { code: 'BCAVA', name: 'BCA Virtual Account', type: 'va', isActive: true, feePercentage: 0, feeFlat: 4000, minAmount: 10000, maxAmount: 100000000 },
+      { code: 'BRIVA', name: 'BRI Virtual Account', type: 'va', isActive: true, feePercentage: 0, feeFlat: 4000, minAmount: 10000, maxAmount: 100000000 },
+      { code: 'BNIVA', name: 'BNI Virtual Account', type: 'va', isActive: true, feePercentage: 0, feeFlat: 4000, minAmount: 10000, maxAmount: 100000000 },
+      { code: 'GOPAY', name: 'GoPay', type: 'ewallet', isActive: true, feePercentage: 2, feeFlat: 0, minAmount: 1000, maxAmount: 10000000 },
+      { code: 'DANA', name: 'DANA', type: 'ewallet', isActive: true, feePercentage: 1.5, feeFlat: 0, minAmount: 1000, maxAmount: 10000000 },
+      { code: 'OVO', name: 'OVO', type: 'ewallet', isActive: true, feePercentage: 2, feeFlat: 0, minAmount: 1000, maxAmount: 10000000 },
     ];
 
     for (const channel of defaultChannels) {
@@ -446,20 +378,20 @@ export class AstraStorage implements IStorage {
     pending: number;
     failed: number;
   }> {
-    const filter: any = { userId };
+    const conditions = [eq(transactions.userId, userId)];
     
-    if (startDate || endDate) {
-      filter.createdAt = {};
-      if (startDate) filter.createdAt.$gte = startDate.toISOString();
-      if (endDate) filter.createdAt.$lte = endDate.toISOString();
+    if (startDate) {
+      conditions.push(gte(transactions.createdAt, startDate));
+    }
+    if (endDate) {
+      conditions.push(lte(transactions.createdAt, endDate));
     }
 
-    const cursor = this.transactions.find(filter);
-    const transactions = await cursor.toArray();
+    const txList = await db.select().from(transactions).where(and(...conditions));
     
     let total = 0, success = 0, pending = 0, failed = 0;
     
-    for (const tx of transactions) {
+    for (const tx of txList) {
       total += tx.amount;
       if (tx.status === 'success') success += tx.amount;
       else if (tx.status === 'pending') pending += tx.amount;
@@ -475,12 +407,11 @@ export class AstraStorage implements IStorage {
     pending: number;
     failed: number;
   }> {
-    const cursor = this.transactions.find({ userId });
-    const transactions = await cursor.toArray();
+    const txList = await db.select().from(transactions).where(eq(transactions.userId, userId));
     
     let total = 0, success = 0, pending = 0, failed = 0;
     
-    for (const tx of transactions) {
+    for (const tx of txList) {
       total++;
       if (tx.status === 'success') success++;
       else if (tx.status === 'pending') pending++;
@@ -491,4 +422,4 @@ export class AstraStorage implements IStorage {
   }
 }
 
-export const storage = new AstraStorage();
+export const storage = new DrizzleStorage();

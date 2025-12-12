@@ -34,17 +34,35 @@ app.use(
 app.use(express.urlencoded({ extended: false }));
 
 function createSessionStore() {
-  if (process.env.DATABASE_URL) {
-    const sessionPool = new Pool({
-      connectionString: process.env.DATABASE_URL,
-      ssl: process.env.NODE_ENV === "production" ? { rejectUnauthorized: false } : undefined,
-    });
-    return new PgSession({
-      pool: sessionPool,
-      tableName: "user_sessions",
-      createTableIfMissing: true,
+  const isVercel = process.env.VERCEL === '1' || process.env.VERCEL_ENV !== undefined;
+  
+  if (isVercel) {
+    console.log('[Session] Using MemoryStore for Vercel (faster for serverless)');
+    return new MemoryStoreSession({
+      checkPeriod: 86400000,
     });
   }
+  
+  if (process.env.DATABASE_URL && process.env.NODE_ENV !== 'production') {
+    try {
+      const sessionPool = new Pool({
+        connectionString: process.env.DATABASE_URL,
+        ssl: process.env.NODE_ENV === "production" ? { rejectUnauthorized: false } : undefined,
+        connectionTimeoutMillis: 5000,
+        max: 3,
+      });
+      console.log('[Session] Using PostgreSQL session store');
+      return new PgSession({
+        pool: sessionPool,
+        tableName: "user_sessions",
+        createTableIfMissing: true,
+      });
+    } catch (err) {
+      console.warn('[Session] Failed to create PG session store, falling back to MemoryStore');
+    }
+  }
+  
+  console.log('[Session] Using MemoryStore');
   return new MemoryStoreSession({
     checkPeriod: 86400000,
   });

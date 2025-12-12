@@ -30,6 +30,20 @@ export default function AuthPage() {
     setIsLoading(true);
 
     try {
+      const healthCheck = await fetch('/api/health', { 
+        signal: AbortSignal.timeout(3000) 
+      }).catch(() => null);
+      
+      if (!healthCheck || !healthCheck.ok) {
+        toast({
+          title: "Server Tidak Tersedia",
+          description: "Server sedang tidak dapat dijangkau. Coba lagi dalam beberapa saat.",
+          variant: "destructive",
+        });
+        setIsLoading(false);
+        return;
+      }
+
       if (isLogin) {
         const response = await api.auth.login({
           username: formData.username,

@@ -11,7 +11,7 @@ export const api = {
     }, options?: { signal?: AbortSignal }): Promise<User> => {
       const res = await apiRequest("POST", "/api/auth/register", data, { 
         signal: options?.signal,
-        timeout: 20000
+        timeout: 10000
       });
       return res.json();
     },
@@ -19,7 +19,7 @@ export const api = {
     login: async (data: { username: string; password: string }, options?: { signal?: AbortSignal }): Promise<User> => {
       const res = await apiRequest("POST", "/api/auth/login", data, {
         signal: options?.signal,
-        timeout: 15000
+        timeout: 8000
       });
       return res.json();
     },

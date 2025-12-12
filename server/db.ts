@@ -45,19 +45,29 @@ export async function initializeDatabase(): Promise<DatabaseInitResult> {
   }
 
   try {
+    const isPgBouncer = connectionString.includes('pgbouncer=true') || connectionString.includes('pooler.supabase.com');
+    
     const poolConfig: pg.PoolConfig = {
       connectionString,
       max: isVercel ? 1 : 10,
       idleTimeoutMillis: isVercel ? 5000 : 30000,
-      connectionTimeoutMillis: isVercel ? 5000 : 10000,
+      connectionTimeoutMillis: isVercel ? 10000 : 10000,
       statement_timeout: isVercel ? 25000 : 60000,
     };
 
-    if (isProduction || connectionString.includes('neon.tech') || connectionString.includes('supabase')) {
+    if (isProduction || connectionString.includes('neon.tech') || connectionString.includes('supabase') || connectionString.includes('pooler')) {
       poolConfig.ssl = {
         rejectUnauthorized: false
       };
     }
+
+    console.log('[DB] Creating pool with config:', { 
+      max: poolConfig.max, 
+      connectionTimeoutMillis: poolConfig.connectionTimeoutMillis,
+      isPgBouncer,
+      isVercel,
+      hasSSL: !!poolConfig.ssl
+    });
 
     poolInstance = new Pool(poolConfig);
 
@@ -68,6 +78,15 @@ export async function initializeDatabase(): Promise<DatabaseInitResult> {
     poolInstance.on('connect', () => {
       console.log('[DB] New client connected to PostgreSQL');
     });
+
+    console.log('[DB] Testing database connection...');
+    const client = await poolInstance.connect();
+    try {
+      const result = await client.query('SELECT NOW() as now');
+      console.log('[DB] Connection test successful:', result.rows[0]?.now);
+    } finally {
+      client.release();
+    }
 
     dbInstance = drizzle(poolInstance, { schema });
     isInitialized = true;

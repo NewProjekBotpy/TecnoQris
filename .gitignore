@@ -9,3 +9,10 @@ vite.config.ts.*
 .replit
 replit.md
 .replit.nix
+.cache
+.local
+.config
+.upm
+
+# Assets (screenshots, generated images)
+attached_assets

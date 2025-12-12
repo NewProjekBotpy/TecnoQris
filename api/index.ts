@@ -4,6 +4,7 @@ import MemoryStore from "memorystore";
 import serverless from "serverless-http";
 import crypto from "crypto";
 import { storage } from "../server/storage";
+import { checkAstraDbConfig } from "../server/astradb";
 import {
   insertUserSchema,
   insertTransactionSchema,
@@ -206,6 +207,44 @@ const webhookRateLimiter = createRateLimiter({
   keyPrefix: 'webhook'
 });
 
+app.get("/api/health", async (req, res) => {
+  const dbConfig = checkAstraDbConfig();
+  const sakurupiahStatus = sakurupiahConfigured ? "configured" : "not_configured";
+  
+  let dbConnection = "unknown";
+  if (dbConfig.configured) {
+    try {
+      await storage.getPaymentChannels();
+      dbConnection = "connected";
+    } catch (error: any) {
+      dbConnection = `error: ${error.message}`;
+    }
+  } else {
+    dbConnection = `not_configured: ${dbConfig.error}`;
+  }
+
+  res.json({
+    status: "ok",
+    timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV || "unknown",
+    services: {
+      astradb: {
+        configured: dbConfig.configured,
+        connection: dbConnection,
+        error: dbConfig.error || null
+      },
+      sakurupiah: sakurupiahStatus
+    },
+    env_check: {
+      ASTRA_DB_TOKEN: process.env.ASTRA_DB_TOKEN ? "set" : "missing",
+      ASTRA_DB_ENDPOINT: process.env.ASTRA_DB_ENDPOINT ? "set" : "missing",
+      SESSION_SECRET: process.env.SESSION_SECRET ? "set" : "missing",
+      SAKURUPIAH_API_ID: process.env.SAKURUPIAH_API_ID ? "set" : "missing",
+      SAKURUPIAH_API_KEY: process.env.SAKURUPIAH_API_KEY ? "set" : "missing",
+    }
+  });
+});
+
 app.post("/api/auth/register", authRateLimiter, async (req, res) => {
   try {
     const userData = insertUserSchema.parse(req.body);
@@ -251,12 +290,25 @@ app.post("/api/auth/register", authRateLimiter, async (req, res) => {
       const { password, ...userWithoutPassword } = user;
       res.status(201).json(userWithoutPassword);
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error("Registration error:", error);
+    console.error("Registration error stack:", error?.stack);
+    
     if (error instanceof z.ZodError) {
       return res.status(400).json({ message: "Validation error", errors: error.errors });
     }
-    res.status(500).json({ message: "Internal server error" });
+    
+    if (error?.message?.includes("ASTRA_DB")) {
+      return res.status(503).json({ 
+        message: "Database not configured", 
+        details: "Please ensure ASTRA_DB_TOKEN and ASTRA_DB_ENDPOINT are set in Vercel environment variables."
+      });
+    }
+    
+    res.status(500).json({ 
+      message: "Internal server error",
+      error: process.env.NODE_ENV === 'development' ? error?.message : undefined
+    });
   }
 });
 
@@ -282,12 +334,22 @@ app.post("/api/auth/login", authRateLimiter, async (req, res) => {
     
     req.session.save((err) => {
       if (err) {
+        console.error("Session save error:", err);
         return res.status(500).json({ message: "Failed to save session" });
       }
       const { password: _, ...userWithoutPassword } = user;
       res.json(userWithoutPassword);
     });
-  } catch (error) {
+  } catch (error: any) {
+    console.error("Login error:", error);
+    
+    if (error?.message?.includes("ASTRA_DB")) {
+      return res.status(503).json({ 
+        message: "Database not configured", 
+        details: "Please ensure ASTRA_DB_TOKEN and ASTRA_DB_ENDPOINT are set in Vercel environment variables."
+      });
+    }
+    
     res.status(500).json({ message: "Internal server error" });
   }
 });

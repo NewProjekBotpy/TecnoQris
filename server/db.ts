@@ -2,7 +2,11 @@ import { drizzle, NodePgDatabase } from "drizzle-orm/node-postgres";
 import pg from "pg";
 import * as schema from "../shared/schema";
 
-const { Pool } = pg;
+const { Pool, types, defaults } = pg;
+
+// Fix for Supabase Pooler (PgBouncer) - disable prepared statements
+defaults.parseInputDatesAsUTC = true;
+(defaults as any).prepareForSimpleProtocol = true;
 
 const isProduction = process.env.NODE_ENV === 'production';
 const isVercel = process.env.VERCEL === '1' || process.env.VERCEL_ENV !== undefined;

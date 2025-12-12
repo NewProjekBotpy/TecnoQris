@@ -32,6 +32,7 @@ export interface IStorage {
   getTransactions(userId: string, limit?: number): Promise<Transaction[]>;
   getTransactionById(id: string): Promise<Transaction | undefined>;
   createTransaction(transaction: InsertTransaction): Promise<Transaction>;
+  createTransactionsBatch(transactions: InsertTransaction[]): Promise<Transaction[]>;
   updateTransaction(id: string, updates: Partial<InsertTransaction>): Promise<Transaction | undefined>;
 
   getWallets(userId: string): Promise<Wallet[]>;
@@ -168,6 +169,17 @@ export class AstraStorage implements IStorage {
     };
     await this.transactions.insertOne(newTransaction);
     return newTransaction;
+  }
+
+  async createTransactionsBatch(transactions: InsertTransaction[]): Promise<Transaction[]> {
+    const newTransactions: Transaction[] = transactions.map(transaction => ({
+      _id: uuidv4(),
+      ...transaction,
+      status: transaction.status || "pending",
+      createdAt: transaction.createdAt || new Date().toISOString(),
+    }));
+    await this.transactions.insertMany(newTransactions);
+    return newTransactions;
   }
 
   async updateTransaction(id: string, updates: Partial<InsertTransaction>): Promise<Transaction | undefined> {

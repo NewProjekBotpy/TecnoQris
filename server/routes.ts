@@ -243,7 +243,7 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Username already exists" });
       }
       
-      const hashedPassword = await bcrypt.hash(userData.password, 10);
+      const hashedPassword = await bcrypt.hash(userData.password, 8);
       const user = await storage.createUser({
         ...userData,
         password: hashedPassword,
@@ -251,25 +251,20 @@ export async function registerRoutes(
       
       await storage.createInitialApiKeys(user._id);
       
-      // Seed example transactions for new user with unique transaction IDs
+      // Seed example transactions for new user with unique transaction IDs (batch insert for performance)
       const userPrefix = user._id.slice(0, 8);
       const exampleTransactions = [
-        { transactionId: `TRX-${userPrefix}-001`, type: "income", amount: 150000, status: "success", customer: "Budi Santoso", method: "QRIS", createdAt: new Date().toISOString() },
-        { transactionId: `TRX-${userPrefix}-002`, type: "income", amount: 25000, status: "success", customer: "Siti Aminah", method: "QRIS", createdAt: new Date().toISOString() },
-        { transactionId: `TRX-${userPrefix}-003`, type: "expense", amount: 500000, status: "pending", customer: "Vendor Payment", method: "Bank Transfer", createdAt: new Date().toISOString() },
-        { transactionId: `TRX-${userPrefix}-004`, type: "income", amount: 75000, status: "success", customer: "Rudi Hartono", method: "QRIS", createdAt: new Date().toISOString() },
-        { transactionId: `TRX-${userPrefix}-005`, type: "income", amount: 200000, status: "failed", customer: "Dewi Lestari", method: "E-Wallet", createdAt: new Date().toISOString() },
-        { transactionId: `TRX-${userPrefix}-006`, type: "income", amount: 350000, status: "success", customer: "Andi Pratama", method: "QRIS", createdAt: new Date().toISOString() },
-        { transactionId: `TRX-${userPrefix}-007`, type: "expense", amount: 125000, status: "success", customer: "Supplier ABC", method: "Bank Transfer", createdAt: new Date().toISOString() },
-        { transactionId: `TRX-${userPrefix}-008`, type: "income", amount: 450000, status: "success", customer: "Maya Sari", method: "E-Wallet", createdAt: new Date().toISOString() },
+        { transactionId: `TRX-${userPrefix}-001`, type: "income", amount: 150000, status: "success", customer: "Budi Santoso", method: "QRIS", createdAt: new Date().toISOString(), userId: user._id },
+        { transactionId: `TRX-${userPrefix}-002`, type: "income", amount: 25000, status: "success", customer: "Siti Aminah", method: "QRIS", createdAt: new Date().toISOString(), userId: user._id },
+        { transactionId: `TRX-${userPrefix}-003`, type: "expense", amount: 500000, status: "pending", customer: "Vendor Payment", method: "Bank Transfer", createdAt: new Date().toISOString(), userId: user._id },
+        { transactionId: `TRX-${userPrefix}-004`, type: "income", amount: 75000, status: "success", customer: "Rudi Hartono", method: "QRIS", createdAt: new Date().toISOString(), userId: user._id },
+        { transactionId: `TRX-${userPrefix}-005`, type: "income", amount: 200000, status: "failed", customer: "Dewi Lestari", method: "E-Wallet", createdAt: new Date().toISOString(), userId: user._id },
+        { transactionId: `TRX-${userPrefix}-006`, type: "income", amount: 350000, status: "success", customer: "Andi Pratama", method: "QRIS", createdAt: new Date().toISOString(), userId: user._id },
+        { transactionId: `TRX-${userPrefix}-007`, type: "expense", amount: 125000, status: "success", customer: "Supplier ABC", method: "Bank Transfer", createdAt: new Date().toISOString(), userId: user._id },
+        { transactionId: `TRX-${userPrefix}-008`, type: "income", amount: 450000, status: "success", customer: "Maya Sari", method: "E-Wallet", createdAt: new Date().toISOString(), userId: user._id },
       ];
       
-      for (const trx of exampleTransactions) {
-        await storage.createTransaction({
-          ...trx,
-          userId: user._id,
-        });
-      }
+      await storage.createTransactionsBatch(exampleTransactions);
       
       req.session.userId = user._id;
       

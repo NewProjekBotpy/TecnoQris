@@ -30,14 +30,14 @@ export default function AuthPage() {
     setIsLoading(true);
 
     try {
-      const healthCheck = await fetch('/api/health', { 
-        signal: AbortSignal.timeout(3000) 
+      const pingCheck = await fetch('/api/ping', { 
+        signal: AbortSignal.timeout(5000) 
       }).catch(() => null);
       
-      if (!healthCheck || !healthCheck.ok) {
+      if (!pingCheck || !pingCheck.ok) {
         toast({
           title: "Server Tidak Tersedia",
-          description: "Server sedang tidak dapat dijangkau. Coba lagi dalam beberapa saat.",
+          description: "Server sedang cold start atau tidak dapat dijangkau. Tunggu 5 detik lalu coba lagi.",
           variant: "destructive",
         });
         setIsLoading(false);

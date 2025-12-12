@@ -196,12 +196,20 @@ export async function registerRoutes(
   
   initSakurupiahService();
   
+  app.get("/api/ping", (req, res) => {
+    res.json({ status: "ok", timestamp: Date.now() });
+  });
+
   app.get("/api/health", async (req, res) => {
+    const startTime = Date.now();
     const sakurupiahStatus = sakurupiahConfigured ? "configured" : "not_configured";
     
     let dbConnection = "unknown";
+    let dbResponseTime = 0;
     try {
+      const dbStart = Date.now();
       await storage.getPaymentChannels();
+      dbResponseTime = Date.now() - dbStart;
       dbConnection = "connected";
     } catch (error: any) {
       dbConnection = `error: ${error.message}`;
@@ -210,11 +218,14 @@ export async function registerRoutes(
     res.json({
       status: "ok",
       timestamp: new Date().toISOString(),
+      responseTime: Date.now() - startTime,
       environment: process.env.NODE_ENV || "unknown",
+      isVercel: process.env.VERCEL === '1' || process.env.VERCEL_ENV !== undefined,
       services: {
         postgresql: {
           configured: !!process.env.DATABASE_URL,
           connection: dbConnection,
+          responseTime: dbResponseTime,
         },
         sakurupiah: sakurupiahStatus
       },

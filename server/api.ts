@@ -3,7 +3,7 @@ import serverless from "serverless-http";
 import crypto from "crypto";
 import { SignJWT, jwtVerify } from "jose";
 import { storage } from "../server/storage";
-import { checkAstraDbConfig } from "../server/astradb";
+import { db } from "./db";
 import {
   insertUserSchema,
   insertTransactionSchema,
@@ -143,7 +143,7 @@ async function apiKeyAuth(req: AuthenticatedRequest, res: Response, next: NextFu
       });
     }
 
-    if (apiKey.isActive !== 1) {
+    if (!apiKey.isActive) {
       return res.status(403).json({ 
         success: false,
         error: {
@@ -153,7 +153,7 @@ async function apiKeyAuth(req: AuthenticatedRequest, res: Response, next: NextFu
       });
     }
 
-    await storage.incrementApiKeyUsage(apiKey._id);
+    await storage.incrementApiKeyUsage(apiKey.id);
     
     req.apiKey = apiKey;
     req.apiKeyUserId = apiKey.userId;
@@ -239,11 +239,11 @@ const webhookRateLimiter = createRateLimiter({
 });
 
 app.get("/api/health", async (req, res) => {
-  const dbConfig = checkAstraDbConfig();
   const sakurupiahStatus = sakurupiahConfigured ? "configured" : "not_configured";
+  const dbConfigured = !!process.env.DATABASE_URL;
   
   let dbConnection = "unknown";
-  if (dbConfig.configured) {
+  if (dbConfigured) {
     try {
       await storage.getPaymentChannels();
       dbConnection = "connected";
@@ -251,7 +251,7 @@ app.get("/api/health", async (req, res) => {
       dbConnection = `error: ${error.message}`;
     }
   } else {
-    dbConnection = `not_configured: ${dbConfig.error}`;
+    dbConnection = "not_configured: DATABASE_URL not set";
   }
 
   res.json({
@@ -259,16 +259,15 @@ app.get("/api/health", async (req, res) => {
     timestamp: new Date().toISOString(),
     environment: process.env.NODE_ENV || "unknown",
     services: {
-      astradb: {
-        configured: dbConfig.configured,
+      postgresql: {
+        configured: dbConfigured,
         connection: dbConnection,
-        error: dbConfig.error || null
+        error: dbConfigured ? null : "DATABASE_URL not set"
       },
       sakurupiah: sakurupiahStatus
     },
     env_check: {
-      ASTRA_DB_TOKEN: process.env.ASTRA_DB_TOKEN ? "set" : "missing",
-      ASTRA_DB_ENDPOINT: process.env.ASTRA_DB_ENDPOINT ? "set" : "missing",
+      DATABASE_URL: process.env.DATABASE_URL ? "set" : "missing",
       SESSION_SECRET: process.env.SESSION_SECRET ? "set" : "missing",
       SAKURUPIAH_API_ID: process.env.SAKURUPIAH_API_ID ? "set" : "missing",
       SAKURUPIAH_API_KEY: process.env.SAKURUPIAH_API_KEY ? "set" : "missing",
@@ -291,28 +290,28 @@ app.post("/api/auth/register", authRateLimiter, async (req, res) => {
       password: hashedPassword,
     });
     
-    await storage.createInitialApiKeys(user._id);
+    await storage.createInitialApiKeys(user.id);
     
-    const userPrefix = user._id.slice(0, 8);
+    const userPrefix = user.id.slice(0, 8);
     const exampleTransactions = [
-      { transactionId: `TRX-${userPrefix}-001`, type: "income", amount: 150000, status: "success", customer: "Budi Santoso", method: "QRIS", createdAt: new Date().toISOString() },
-      { transactionId: `TRX-${userPrefix}-002`, type: "income", amount: 25000, status: "success", customer: "Siti Aminah", method: "QRIS", createdAt: new Date().toISOString() },
-      { transactionId: `TRX-${userPrefix}-003`, type: "expense", amount: 500000, status: "pending", customer: "Vendor Payment", method: "Bank Transfer", createdAt: new Date().toISOString() },
-      { transactionId: `TRX-${userPrefix}-004`, type: "income", amount: 75000, status: "success", customer: "Rudi Hartono", method: "QRIS", createdAt: new Date().toISOString() },
-      { transactionId: `TRX-${userPrefix}-005`, type: "income", amount: 200000, status: "failed", customer: "Dewi Lestari", method: "E-Wallet", createdAt: new Date().toISOString() },
-      { transactionId: `TRX-${userPrefix}-006`, type: "income", amount: 350000, status: "success", customer: "Andi Pratama", method: "QRIS", createdAt: new Date().toISOString() },
-      { transactionId: `TRX-${userPrefix}-007`, type: "expense", amount: 125000, status: "success", customer: "Supplier ABC", method: "Bank Transfer", createdAt: new Date().toISOString() },
-      { transactionId: `TRX-${userPrefix}-008`, type: "income", amount: 450000, status: "success", customer: "Maya Sari", method: "E-Wallet", createdAt: new Date().toISOString() },
+      { transactionId: `TRX-${userPrefix}-001`, type: "income", amount: 150000, status: "success", customer: "Budi Santoso", method: "QRIS", createdAt: new Date() },
+      { transactionId: `TRX-${userPrefix}-002`, type: "income", amount: 25000, status: "success", customer: "Siti Aminah", method: "QRIS", createdAt: new Date() },
+      { transactionId: `TRX-${userPrefix}-003`, type: "expense", amount: 500000, status: "pending", customer: "Vendor Payment", method: "Bank Transfer", createdAt: new Date() },
+      { transactionId: `TRX-${userPrefix}-004`, type: "income", amount: 75000, status: "success", customer: "Rudi Hartono", method: "QRIS", createdAt: new Date() },
+      { transactionId: `TRX-${userPrefix}-005`, type: "income", amount: 200000, status: "failed", customer: "Dewi Lestari", method: "E-Wallet", createdAt: new Date() },
+      { transactionId: `TRX-${userPrefix}-006`, type: "income", amount: 350000, status: "success", customer: "Andi Pratama", method: "QRIS", createdAt: new Date() },
+      { transactionId: `TRX-${userPrefix}-007`, type: "expense", amount: 125000, status: "success", customer: "Supplier ABC", method: "Bank Transfer", createdAt: new Date() },
+      { transactionId: `TRX-${userPrefix}-008`, type: "income", amount: 450000, status: "success", customer: "Maya Sari", method: "E-Wallet", createdAt: new Date() },
     ];
     
     for (const trx of exampleTransactions) {
       await storage.createTransaction({
         ...trx,
-        userId: user._id,
+        userId: user.id,
       });
     }
     
-    const token = await createToken(user._id);
+    const token = await createToken(user.id);
     
     res.setHeader("Set-Cookie", `auth_token=${token}; Path=/; HttpOnly; Secure; SameSite=None; Max-Age=86400`);
     
@@ -326,10 +325,10 @@ app.post("/api/auth/register", authRateLimiter, async (req, res) => {
       return res.status(400).json({ message: "Validation error", errors: error.errors });
     }
     
-    if (error?.message?.includes("ASTRA_DB")) {
+    if (error?.message?.includes("DATABASE_URL")) {
       return res.status(503).json({ 
         message: "Database not configured", 
-        details: "Please ensure ASTRA_DB_TOKEN and ASTRA_DB_ENDPOINT are set in Vercel environment variables."
+        details: "Please ensure DATABASE_URL is set in environment variables."
       });
     }
     
@@ -358,7 +357,7 @@ app.post("/api/auth/login", authRateLimiter, async (req, res) => {
       return res.status(401).json({ message: "Invalid credentials" });
     }
     
-    const token = await createToken(user._id);
+    const token = await createToken(user.id);
     
     res.setHeader("Set-Cookie", `auth_token=${token}; Path=/; HttpOnly; Secure; SameSite=None; Max-Age=86400`);
     
@@ -367,10 +366,10 @@ app.post("/api/auth/login", authRateLimiter, async (req, res) => {
   } catch (error: any) {
     console.error("Login error:", error);
     
-    if (error?.message?.includes("ASTRA_DB")) {
+    if (error?.message?.includes("DATABASE_URL")) {
       return res.status(503).json({ 
         message: "Database not configured", 
-        details: "Please ensure ASTRA_DB_TOKEN and ASTRA_DB_ENDPOINT are set in Vercel environment variables."
+        details: "Please ensure DATABASE_URL is set in environment variables."
       });
     }
     
@@ -658,14 +657,14 @@ app.patch("/api/api-keys/:id/status", isAuthenticated as any, async (req: Authen
   try {
     const apiKeys = await storage.getApiKeys(req.userId!);
     
-    const apiKey = apiKeys.find(k => k._id === req.params.id);
+    const apiKey = apiKeys.find(k => k.id === req.params.id);
     if (!apiKey) {
       return res.status(404).json({ message: "API key not found" });
     }
     
     const { isActive } = req.body;
-    if (typeof isActive !== 'number' || (isActive !== 0 && isActive !== 1)) {
-      return res.status(400).json({ message: "isActive must be 0 or 1" });
+    if (typeof isActive !== 'boolean') {
+      return res.status(400).json({ message: "isActive must be a boolean" });
     }
     
     const updatedKey = await storage.updateApiKeyStatus(req.params.id, isActive);
@@ -719,7 +718,7 @@ app.post("/api/v1/payments", apiV1RateLimiter, apiKeyAuth as any, async (req: Au
         return res.status(200).json({
           success: true,
           data: {
-            id: existingPayment._id,
+            id: existingPayment.id,
             external_id: existingPayment.externalId,
             amount: existingPayment.amount,
             description: existingPayment.description,
@@ -751,7 +750,7 @@ app.post("/api/v1/payments", apiV1RateLimiter, apiKeyAuth as any, async (req: Au
     const feeAmount = Math.ceil((validatedData.amount * feePercentage / 100) + feeFlat);
     const netAmount = validatedData.amount - feeAmount;
 
-    const expiresAt = new Date(Date.now() + validatedData.expiry_minutes * 60 * 1000).toISOString();
+    const expiresAt = new Date(Date.now() + validatedData.expiry_minutes * 60 * 1000);
     
     let qrString = "";
     let qrUrl = "";
@@ -812,7 +811,7 @@ app.post("/api/v1/payments", apiV1RateLimiter, apiKeyAuth as any, async (req: Au
     res.status(201).json({
       success: true,
       data: {
-        id: payment._id,
+        id: payment.id,
         external_id: payment.externalId,
         amount: payment.amount,
         fee_amount: payment.feeAmount,
@@ -861,7 +860,7 @@ app.get("/api/v1/payments", apiV1RateLimiter, apiKeyAuth as any, async (req: Aut
     res.json({
       success: true,
       data: payments.map(payment => ({
-        id: payment._id,
+        id: payment.id,
         external_id: payment.externalId,
         amount: payment.amount,
         fee_amount: payment.feeAmount,
@@ -923,7 +922,7 @@ app.get("/api/v1/payments/:id", apiV1RateLimiter, apiKeyAuth as any, async (req:
     res.json({
       success: true,
       data: {
-        id: payment._id,
+        id: payment.id,
         external_id: payment.externalId,
         amount: payment.amount,
         fee_amount: payment.feeAmount,
@@ -1015,15 +1014,15 @@ app.post("/api/v1/payments/:id/simulate", apiV1RateLimiter, apiKeyAuth as any, a
     };
 
     if (validatedData.status === "paid") {
-      updates.paidAt = new Date().toISOString();
+      updates.paidAt = new Date();
     }
 
-    const updatedPayment = await storage.updatePayment(payment._id, updates);
+    const updatedPayment = await storage.updatePayment(payment.id, updates);
 
     res.json({
       success: true,
       data: {
-        id: updatedPayment!._id,
+        id: updatedPayment!.id,
         external_id: updatedPayment!.externalId,
         amount: updatedPayment!.amount,
         description: updatedPayment!.description,
@@ -1113,13 +1112,13 @@ app.get("/api/v1/payments/:id/status", apiV1RateLimiter, apiKeyAuth as any, asyn
             providerStatus: statusResponse.data.status,
           };
           if (mappedStatus === 'paid' && statusResponse.data.paid_at) {
-            updates.paidAt = statusResponse.data.paid_at;
-            paidAt = statusResponse.data.paid_at;
+            updates.paidAt = new Date(statusResponse.data.paid_at);
+            paidAt = new Date(statusResponse.data.paid_at);
           }
-          await storage.updatePayment(payment._id, updates);
+          await storage.updatePayment(payment.id, updates);
           currentStatus = mappedStatus;
           console.log('[Payment] Status updated from Sakurupiah', { 
-            paymentId: payment._id, 
+            paymentId: payment.id, 
             oldStatus: payment.status, 
             newStatus: mappedStatus 
           });
@@ -1132,14 +1131,14 @@ app.get("/api/v1/payments/:id/status", apiV1RateLimiter, apiKeyAuth as any, asyn
       currentStatus = isExpired ? "expired" : payment.status;
 
       if (isExpired && payment.status === "pending") {
-        await storage.updatePayment(payment._id, { status: "expired" });
+        await storage.updatePayment(payment.id, { status: "expired" });
       }
     }
 
     res.json({
       success: true,
       data: {
-        id: payment._id,
+        id: payment.id,
         external_id: payment.externalId,
         status: currentStatus,
         provider_status: providerStatus,
@@ -1171,8 +1170,8 @@ app.post("/api/v1/webhooks/sakurupiah", webhookRateLimiter, async (req: Request,
       eventType: req.body?.status || 'unknown',
       payload: rawBody,
       signature: signature || '',
-      verified: 0,
-      createdAt: new Date().toISOString(),
+      verified: false,
+      createdAt: new Date(),
     });
 
     if (!sakurupiahConfigured || !sakurupiahService) {
@@ -1210,7 +1209,7 @@ app.post("/api/v1/webhooks/sakurupiah", webhookRateLimiter, async (req: Request,
     let payment = payments.find(p => p.providerRef === reference);
     
     if (!payment && merchant_ref) {
-      payment = payments.find(p => p.externalId === merchant_ref || p._id.includes(merchant_ref));
+      payment = payments.find(p => p.externalId === merchant_ref || p.id.includes(merchant_ref));
     }
 
     if (!payment) {
@@ -1241,24 +1240,24 @@ app.post("/api/v1/webhooks/sakurupiah", webhookRateLimiter, async (req: Request,
     };
 
     if (mappedStatus === 'paid' && paid_at) {
-      updates.paidAt = paid_at;
+      updates.paidAt = new Date(paid_at);
     } else if (mappedStatus === 'paid' && !payment.paidAt) {
-      updates.paidAt = new Date().toISOString();
+      updates.paidAt = new Date();
     }
 
-    await storage.updatePayment(payment._id, updates);
+    await storage.updatePayment(payment.id, updates);
 
     await storage.createWebhookLog({
-      paymentId: payment._id,
+      paymentId: payment.id,
       eventType: `payment.${mappedStatus}`,
       payload: rawBody,
       signature: signature || '',
-      verified: isSignatureValid ? 1 : 0,
-      createdAt: new Date().toISOString(),
+      verified: isSignatureValid,
+      createdAt: new Date(),
     });
 
     console.log('[Webhook] Payment status updated', { 
-      paymentId: payment._id, 
+      paymentId: payment.id, 
       oldStatus: payment.status, 
       newStatus: mappedStatus,
       reference 
@@ -1284,7 +1283,7 @@ app.get("/api/v1/payment-channels", apiV1RateLimiter, async (req: Request, res: 
   try {
     const channels = await storage.getPaymentChannels();
     
-    const activeChannels = channels.filter(c => c.isActive === 1);
+    const activeChannels = channels.filter(c => c.isActive);
 
     res.json({
       success: true,

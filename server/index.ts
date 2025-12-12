@@ -6,7 +6,7 @@ import { createServer } from "http";
 import pg from "pg";
 import connectPgSimple from "connect-pg-simple";
 import MemoryStore from "memorystore";
-import { initializeCollections } from "./astradb";
+import { db } from "./db";
 
 const MemoryStoreSession = MemoryStore(session);
 const PgSession = connectPgSimple(session);
@@ -103,12 +103,12 @@ app.use((req, res, next) => {
 });
 
 (async () => {
-  // Initialize Astra DB collections
+  // Verify PostgreSQL database connection
   try {
-    await initializeCollections();
-    console.log("Astra DB collections initialized");
+    await db.execute("SELECT 1");
+    console.log("PostgreSQL database connected");
   } catch (error) {
-    console.warn("Astra DB initialization warning:", error);
+    console.error("PostgreSQL connection error:", error);
   }
 
   await registerRoutes(httpServer, app);

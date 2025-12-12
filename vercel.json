@@ -12,12 +12,28 @@
     "api/test.js": {
       "maxDuration": 10,
       "memory": 128
+    },
+    "api/ping.js": {
+      "maxDuration": 10,
+      "memory": 128
+    },
+    "api/health.js": {
+      "maxDuration": 30,
+      "memory": 256
     }
   },
   "rewrites": [
     {
       "source": "/api/test",
       "destination": "/api/test"
+    },
+    {
+      "source": "/api/ping",
+      "destination": "/api/ping"
+    },
+    {
+      "source": "/api/health",
+      "destination": "/api/health"
     },
     {
       "source": "/api/:path*",

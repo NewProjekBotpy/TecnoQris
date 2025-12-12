@@ -62,13 +62,12 @@ async function buildAll() {
   });
 
   console.log("building Vercel API function...");
-  await mkdir("api-build", { recursive: true });
   await esbuild({
     entryPoints: ["api/index.ts"],
     platform: "node",
     bundle: true,
     format: "esm",
-    outfile: "api-build/index.js",
+    outfile: "api/index.js",
     define: {
       "process.env.NODE_ENV": '"production"',
     },

@@ -276,13 +276,6 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Validation error", errors: error.errors });
       }
       
-      if (error?.message?.includes("ASTRA_DB")) {
-        return res.status(503).json({ 
-          message: "Database not configured", 
-          details: "Please ensure ASTRA_DB_TOKEN and ASTRA_DB_ENDPOINT are set in environment variables."
-        });
-      }
-      
       res.status(500).json({ 
         message: "Internal server error",
         error: process.env.NODE_ENV === 'development' ? error?.message : undefined

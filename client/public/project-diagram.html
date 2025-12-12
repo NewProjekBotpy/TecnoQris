@@ -304,7 +304,7 @@ graph TB
     end
 
     subgraph Database["🗄️ Database"]
-        AstraDB[(Astra DB<br/>Cassandra)]
+        PostgreSQL[(PostgreSQL<br/>Drizzle ORM)]
     end
 
     subgraph External["🔗 External Services"]
@@ -322,7 +322,7 @@ graph TB
     Middleware --> Storage
     Routes --> Encryption
     Encryption -->|Encrypt/Decrypt| Storage
-    Storage -->|CRUD| AstraDB
+    Storage -->|CRUD| PostgreSQL
 
     Routes -->|Create Payment| Sakurupiah
     Sakurupiah -->|Webhook| Routes
@@ -371,7 +371,7 @@ graph TB
             <li>TypeScript ESM modules</li>
             <li>Session-based authentication</li>
             <li>AES-256-GCM encryption</li>
-            <li>Astra DB (Cassandra)</li>
+            <li>PostgreSQL + Drizzle ORM</li>
           </ul>
         </div>
       </div>
@@ -584,41 +584,41 @@ graph LR
     <!-- Section 4: Data Models -->
     <section id="data-models">
       <h2><span class="icon">📊</span> Model Data</h2>
-      <p>Struktur data dan relasi antar entitas di database Astra DB.</p>
+      <p>Struktur data dan relasi antar entitas di database PostgreSQL.</p>
 
       <div class="diagram-container">
         <pre class="mermaid">
 erDiagram
     USER {
-        string _id PK
+        uuid id PK
         string username UK
         string password
         string name
         string email
         string role
-        number balance
+        real balance
         string avatar
     }
 
     TRANSACTION {
-        string _id PK
-        string userId FK
+        uuid id PK
+        uuid userId FK
         string transactionId UK
         string type
-        number amount
+        real amount
         string status
         string customer
         string method
-        string createdAt
+        timestamp createdAt
     }
 
     PAYMENT {
-        string _id PK
-        string userId FK
+        uuid id PK
+        uuid userId FK
         string externalId UK
-        number amount
-        number feeAmount
-        number netAmount
+        real amount
+        real feeAmount
+        real netAmount
         string description
         string customerName
         string customerEmail
@@ -626,61 +626,61 @@ erDiagram
         string paymentMethod
         string qrString
         string providerRef
-        string expiresAt
-        string paidAt
-        string createdAt
+        timestamp expiresAt
+        timestamp paidAt
+        timestamp createdAt
     }
 
     APIKEY {
-        string _id PK
-        string userId FK
+        uuid id PK
+        uuid userId FK
         string name
         string key UK
         string mode
-        number isActive
-        number requestCount
-        string createdAt
+        boolean isActive
+        integer requestCount
+        timestamp createdAt
     }
 
     WALLET {
-        string _id PK
-        string userId FK
+        uuid id PK
+        uuid userId FK
         string name
         string type
         string accountNumber
         string bankName
-        number balance
+        real balance
     }
 
     QRCODE {
-        string _id PK
-        string userId FK
+        uuid id PK
+        uuid userId FK
         string name
-        number amount
+        real amount
         string description
         string qrData
-        number isActive
+        boolean isActive
     }
 
     WEBHOOKLOG {
-        string _id PK
-        string paymentId FK
+        uuid id PK
+        uuid paymentId FK
         string eventType
-        string rawPayload
-        string status
-        string createdAt
+        string payload
+        boolean verified
+        timestamp createdAt
     }
 
     PAYMENTCHANNEL {
-        string _id PK
+        uuid id PK
         string code UK
         string name
         string type
-        number feeFlat
-        number feePercentage
-        number minAmount
-        number maxAmount
-        number isActive
+        real feeFlat
+        real feePercentage
+        real minAmount
+        real maxAmount
+        boolean isActive
     }
 
     USER ||--o{ TRANSACTION : has
@@ -726,7 +726,7 @@ sequenceDiagram
     autonumber
     participant Client as 🖥️ Client App
     participant API as ⚙️ TecnoQris API
-    participant DB as 🗄️ Astra DB
+    participant DB as 🗄️ PostgreSQL
     participant Sakurupiah as 🏦 Sakurupiah
 
     Client->>+API: POST /api/v1/payments<br/>(X-API-Key header)

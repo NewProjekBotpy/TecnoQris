@@ -29,7 +29,6 @@ const allowlist = [
   "xlsx",
   "zod",
   "zod-validation-error",
-  "@datastax/astra-db-ts",
   "jose",
 ];
 

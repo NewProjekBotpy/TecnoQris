@@ -91,11 +91,11 @@ function ApiKeyCard({
         <div className="flex flex-col gap-4">
           <div className="flex items-start justify-between gap-4">
             <div className="flex items-center gap-3">
-              <div className={`p-2 rounded-lg ${apiKey.isActive === 1 ? (mode === "sandbox" ? 'bg-yellow-500/10' : 'bg-green-500/10') : 'bg-muted'}`}>
+              <div className={`p-2 rounded-lg ${apiKey.isActive ? (mode === "sandbox" ? 'bg-yellow-500/10' : 'bg-green-500/10') : 'bg-muted'}`}>
                 {mode === "sandbox" ? (
-                  <TestTube className={`h-5 w-5 ${apiKey.isActive === 1 ? 'text-yellow-600' : 'text-muted-foreground'}`} />
+                  <TestTube className={`h-5 w-5 ${apiKey.isActive ? 'text-yellow-600' : 'text-muted-foreground'}`} />
                 ) : (
-                  <Zap className={`h-5 w-5 ${apiKey.isActive === 1 ? 'text-green-600' : 'text-muted-foreground'}`} />
+                  <Zap className={`h-5 w-5 ${apiKey.isActive ? 'text-green-600' : 'text-muted-foreground'}`} />
                 )}
               </div>
               <div>
@@ -104,10 +104,10 @@ function ApiKeyCard({
                     {mode === "sandbox" ? "Sandbox" : "Live"} Key
                   </h4>
                   <Badge 
-                    variant={apiKey.isActive === 1 ? "default" : "secondary"} 
-                    className={`text-xs ${apiKey.isActive === 1 ? (mode === "sandbox" ? 'bg-yellow-500/20 text-yellow-600 dark:text-yellow-400' : 'bg-green-500/20 text-green-600 dark:text-green-400') : ''}`}
+                    variant={apiKey.isActive ? "default" : "secondary"}
+                    className={`text-xs ${apiKey.isActive ? (mode === "sandbox" ? 'bg-yellow-500/20 text-yellow-600 dark:text-yellow-400' : 'bg-green-500/20 text-green-600 dark:text-green-400') : ''}`}
                   >
-                    {apiKey.isActive === 1 ? "Aktif" : "Nonaktif"}
+                    {apiKey.isActive ? "Aktif" : "Nonaktif"}
                   </Badge>
                 </div>
                 <p className="text-xs text-muted-foreground mt-0.5">
@@ -125,8 +125,8 @@ function ApiKeyCard({
                 <Label htmlFor={`status-switch-${mode}`} className="text-sm text-muted-foreground">Status</Label>
                 <Switch 
                   id={`status-switch-${mode}`}
-                  checked={apiKey.isActive === 1} 
-                  onCheckedChange={() => onToggleStatus(apiKey._id, apiKey.isActive === 1 ? 0 : 1)}
+                  checked={apiKey.isActive}
+                  onCheckedChange={() => onToggleStatus(apiKey.id, apiKey.isActive ? 0 : 1)}
                   data-testid={`switch-status-${mode}`}
                 />
               </div>
@@ -274,7 +274,7 @@ export default function ApiKeysPage() {
       api.apiKeys.updateStatus(id, isActive),
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/api-keys"] });
-      toast.success(`API key ${data.isActive === 1 ? 'diaktifkan' : 'dinonaktifkan'}!`);
+      toast.success(`API key ${data.isActive ? 'diaktifkan' : 'dinonaktifkan'}!`);
     },
     onError: () => {
       toast.error("Gagal mengubah status API key");

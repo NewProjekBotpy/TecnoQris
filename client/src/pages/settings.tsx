@@ -30,13 +30,13 @@ function ApiKeyCard({ apiKey, onToggleStatus }: { apiKey: ApiKey; onToggleStatus
   const maskedKey = apiKey.key.slice(0, 12) + "..." + apiKey.key.slice(-4);
 
   return (
-    <div className="border rounded-xl p-4 bg-background" data-testid={`apikey-${apiKey._id}`}>
+    <div className="border rounded-xl p-4 bg-background" data-testid={`apikey-${apiKey.id}`}>
       <div className="flex items-start justify-between gap-4">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-2">
-            <h4 className="font-semibold" data-testid={`text-apikey-name-${apiKey._id}`}>{apiKey.name}</h4>
-            <Badge variant={apiKey.isActive === 1 ? "default" : "secondary"} className="text-xs">
-              {apiKey.isActive === 1 ? "Active" : "Inactive"}
+            <h4 className="font-semibold" data-testid={`text-apikey-name-${apiKey.id}`}>{apiKey.name}</h4>
+            <Badge variant={apiKey.isActive ? "default" : "secondary"} className="text-xs">
+              {apiKey.isActive ? "Active" : "Inactive"}
             </Badge>
           </div>
           
@@ -49,7 +49,7 @@ function ApiKeyCard({ apiKey, onToggleStatus }: { apiKey: ApiKey; onToggleStatus
               variant="ghost"
               className="h-8 w-8 shrink-0"
               onClick={() => setShowKey(!showKey)}
-              data-testid={`button-toggle-visibility-${apiKey._id}`}
+              data-testid={`button-toggle-visibility-${apiKey.id}`}
             >
               {showKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
             </Button>
@@ -58,7 +58,7 @@ function ApiKeyCard({ apiKey, onToggleStatus }: { apiKey: ApiKey; onToggleStatus
               variant="ghost"
               className="h-8 w-8 shrink-0"
               onClick={copyKey}
-              data-testid={`button-copy-apikey-${apiKey._id}`}
+              data-testid={`button-copy-apikey-${apiKey.id}`}
             >
               {copied ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
             </Button>
@@ -82,9 +82,9 @@ function ApiKeyCard({ apiKey, onToggleStatus }: { apiKey: ApiKey; onToggleStatus
 
         <div className="flex items-center gap-2">
           <Switch 
-            checked={apiKey.isActive === 1} 
-            onCheckedChange={() => onToggleStatus(apiKey._id, apiKey.isActive === 1 ? 0 : 1)}
-            data-testid={`switch-status-${apiKey._id}`}
+            checked={apiKey.isActive}
+            onCheckedChange={() => onToggleStatus(apiKey.id, apiKey.isActive ? 0 : 1)}
+            data-testid={`switch-status-${apiKey.id}`}
           />
         </div>
       </div>
@@ -295,7 +295,7 @@ export default function SettingsPage() {
                 <div className="space-y-3">
                   {apiKeys.length > 0 ? (
                     apiKeys.map((key) => (
-                      <ApiKeyCard key={key._id} apiKey={key} onToggleStatus={(id, isActive) => toggleStatusMutation.mutate({ id, isActive })} />
+                      <ApiKeyCard key={key.id} apiKey={key} onToggleStatus={(id, isActive) => toggleStatusMutation.mutate({ id, isActive })} />
                     ))
                   ) : (
                     <div className="text-center py-12 border-2 border-dashed rounded-xl bg-muted/30">
@@ -320,7 +320,7 @@ export default function SettingsPage() {
                     <p className="text-xs text-muted-foreground">Total Keys</p>
                   </div>
                   <div className="p-4 rounded-lg bg-muted/50">
-                    <p className="text-2xl font-bold">{apiKeys.filter(k => k.isActive === 1).length}</p>
+                    <p className="text-2xl font-bold">{apiKeys.filter(k => k.isActive).length}</p>
                     <p className="text-xs text-muted-foreground">Active Keys</p>
                   </div>
                   <div className="p-4 rounded-lg bg-muted/50">
